@@ -2,10 +2,10 @@ package consumer
 
 import (
 	"fmt"
-	"github.com/actionpay/postmanq/common"
-	"github.com/actionpay/postmanq/logger"
+	"github.com/Halfi/postmanq/common"
+	"github.com/Halfi/postmanq/logger"
 	"github.com/streadway/amqp"
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 	"net/url"
 	"sync"
 )

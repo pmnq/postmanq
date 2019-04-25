@@ -2,8 +2,8 @@ package recipient
 
 import (
 	"fmt"
-	"github.com/actionpay/postmanq/common"
-	"github.com/actionpay/postmanq/logger"
+	"github.com/Halfi/postmanq/common"
+	"github.com/Halfi/postmanq/logger"
 	yaml "gopkg.in/yaml.v2"
 	"net"
 	"strings"

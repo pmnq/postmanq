@@ -3,8 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/actionpay/postmanq/common"
-	"github.com/actionpay/postmanq/logger"
+	"github.com/Halfi/postmanq/common"
+	"github.com/Halfi/postmanq/logger"
 	"log"
 	"net"
 	"net/smtp"

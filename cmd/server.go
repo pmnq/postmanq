@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/actionpay/postmanq/common"
-	"github.com/actionpay/postmanq/logger"
-	"github.com/actionpay/postmanq/recipient"
+	"github.com/Halfi/postmanq/common"
+	"github.com/Halfi/postmanq/logger"
+	"github.com/Halfi/postmanq/recipient"
 	"runtime"
 )
 

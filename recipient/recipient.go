@@ -1,7 +1,7 @@
 package recipient
 
 import (
-	"github.com/actionpay/postmanq/logger"
+	"github.com/Halfi/postmanq/logger"
 	"net"
 	"net/textproto"
 )

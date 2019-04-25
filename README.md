@@ -100,8 +100,8 @@ Selector-ом может быть любым словом на латинице.
     cd /some/path && mkdir postmanq && cd postmanq/
     export GOPATH=/some/path/postmanq/
     export GOBIN=/some/path/postmanq/bin/
-    go get -d github.com/actionpay/postmanq/cmd
-    cd src/github.com/actionpay/postmanq
+    go get -d github.com/Halfi/postmanq/cmd
+    cd src/github.com/Halfi/postmanq
     git checkout v.3.1
     go install cmd/postmanq.go
     go install cmd/pmq-grep.go
@@ -137,4 +137,16 @@ Selector-ом может быть любым словом на латинице.
 
 ###pmq-report
 
-С помощью pmq-report можно посмотреть - по какой причине письмо попало в очередь для ошибок.  
+С помощью pmq-report можно посмотреть - по какой причине письмо попало в очередь для ошибок.
+
+##Docker
+Качаем конфиг:
+```bash
+curl -o /path/to/config.yaml https://raw.githubusercontent.com/Halfi/postmanq/v.3.2-rc2/config.yaml
+```
+Настраиваем доступы к AMQP-серверу.
+
+И запускаем, прокинув конфиг:
+```bash
+docker run -v `/path/to/config.yaml`:`/etc/postmaq.yaml` -d --restart unless-stopped --name postmanq halfi/postmanq:latest
+```  
