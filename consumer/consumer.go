@@ -3,8 +3,8 @@ package consumer
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/actionpay/postmanq/common"
-	"github.com/actionpay/postmanq/logger"
+	"github.com/Halfi/postmanq/common"
+	"github.com/Halfi/postmanq/logger"
 	"github.com/streadway/amqp"
 	"regexp"
 	"sync"

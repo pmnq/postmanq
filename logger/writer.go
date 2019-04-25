@@ -2,7 +2,7 @@ package logger
 
 import (
 	"fmt"
-	"github.com/actionpay/postmanq/common"
+	"github.com/Halfi/postmanq/common"
 	"os"
 	"path/filepath"
 	"time"
