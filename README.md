@@ -1,5 +1,11 @@
 # PostmanQ
 
+[![license](https://img.shields.io/github/license/halfi/postmanq?style=flat-square)](https://github.com/Halfi/postmanq/blob/main/LICENSE)
+[![go version](https://img.shields.io/github/go-mod/go-version/Halfi/postmanq?style=flat-square)](https://github.com/Halfi/postmanq/)
+[![go version](https://goreportcard.com/badge/github.com/Halfi/postmanq?style=flat-square)](https://goreportcard.com/report/github.com/Halfi/postmanq)
+
+---
+
 PostmanQ - это высокопроизводительный почтовый сервер(MTA). 
 На сервере под управлением Ubuntu 12.04 с 8-ми ядерным процессором и 32ГБ оперативной памяти 
 PostmanQ рассылает более 300 писем в секунду.

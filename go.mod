@@ -1,6 +1,6 @@
 module github.com/Halfi/postmanq
 
-go 1.15
+go 1.16
 
 require (
 	github.com/byorty/clitable v0.0.0-20150722055417-9f60651b8308
