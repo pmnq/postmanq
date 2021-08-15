@@ -1,4 +1,4 @@
-name: Create and publish avoparts Docker image
+name: Create and publish Docker image
 
 on:
   push:

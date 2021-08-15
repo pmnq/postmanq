@@ -6,12 +6,13 @@ import (
 	"encoding/pem"
 	"io/ioutil"
 
-	"github.com/byorty/dkim"
 	"gopkg.in/yaml.v3"
 
 	"github.com/Halfi/postmanq/common"
 	"github.com/Halfi/postmanq/logger"
 )
+
+const defaultDkimSelector = "mail"
 
 var (
 	// сервис отправки писем
@@ -44,12 +45,7 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 		for name, config := range s.Configs {
 			s.init(config, name)
 		}
-		// указываем заголовки для DKIM
-		dkim.StdSignableHeaders = []string{
-			"From",
-			"To",
-			"Subject",
-		}
+
 		if s.MailersCount == 0 {
 			s.MailersCount = common.DefaultWorkersCount
 		}
@@ -73,10 +69,6 @@ func (s *Service) init(conf *Config, hostname string) {
 	} else {
 		logger.By(hostname).Err("mailer service can't read private key %s", conf.PrivateKeyFilename)
 		logger.By(hostname).FailExitErr(err)
-	}
-	// если не задан селектор, устанавливаем селектор по умолчанию
-	if len(conf.DkimSelector) == 0 {
-		conf.DkimSelector = "mail"
 	}
 }
 
@@ -110,8 +102,8 @@ func (s *Service) getDkimSelector(hostname string) string {
 	if conf, ok := s.Configs[hostname]; ok {
 		return conf.DkimSelector
 	} else {
-		logger.By(hostname).Err("mailer service can't find dkim selector by %s", hostname)
-		return common.EmptyStr
+		logger.By(hostname).Warn("mailer service can't find dkim selector by %s. Set default %s", hostname, defaultDkimSelector)
+		return defaultDkimSelector
 	}
 }
 

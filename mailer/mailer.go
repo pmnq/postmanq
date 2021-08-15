@@ -1,12 +1,13 @@
 package mailer
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strconv"
 	"strings"
 
-	"github.com/byorty/dkim"
+	"github.com/emersion/go-msgauth/dkim"
 
 	"github.com/Halfi/postmanq/common"
 	"github.com/Halfi/postmanq/logger"
@@ -44,20 +45,28 @@ func (m *Mailer) sendMail(event *common.SendEvent) {
 
 // подписывает dkim
 func (m *Mailer) prepare(message *common.MailMessage) {
-	conf, err := dkim.NewConf(message.HostnameFrom, service.getDkimSelector(message.HostnameFrom))
-	if err == nil {
-		conf[dkim.AUIDKey] = message.Envelope
-		conf[dkim.CanonicalizationKey] = "relaxed/relaxed"
-		signed, err := dkim.NewByKey(conf, service.getPrivateKey(message.HostnameFrom)).Sign(message.Body)
-		if err == nil {
-			message.Body = signed
-			logger.By(message.HostnameFrom).Debug("mailer#%d-%d success sign mail", m.id, message.Id)
-		} else {
-			logger.By(message.HostnameFrom).WarnWithErr(err, "mailer#%d-%d can't sign mail", m.id, message.Id)
-		}
-	} else {
-		logger.By(message.HostnameFrom).WarnWithErr(err, "mailer#%d-%d can't create dkim config", m.id, message.Id)
+	options := &dkim.SignOptions{
+		Domain:                 message.HostnameFrom,
+		Identifier:             message.Envelope,
+		Selector:               service.getDkimSelector(message.HostnameFrom),
+		Signer:                 service.getPrivateKey(message.HostnameFrom),
+		HeaderCanonicalization: dkim.CanonicalizationRelaxed,
+		BodyCanonicalization:   dkim.CanonicalizationRelaxed,
+		HeaderKeys: []string{
+			"From",
+			"To",
+			"Subject",
+		},
 	}
+
+	var b bytes.Buffer
+	if err := dkim.Sign(&b, bytes.NewReader(message.Body), options); err != nil {
+		logger.By(message.HostnameFrom).WarnWithErr(err, "mailer#%d-%d can't sign mail", m.id, message.Id)
+		return
+	}
+
+	message.Body = b.Bytes()
+	logger.By(message.HostnameFrom).Debug("mailer#%d-%d success sign mail", m.id, message.Id)
 }
 
 // отправляет письмо

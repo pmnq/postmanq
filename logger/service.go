@@ -60,6 +60,8 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 		// callerMarshalFunc adds only last 2 parts
 		zerolog.CallerMarshalFunc = callerMarshalFunc
 		log.Logger = log.With().Caller().Logger()
+		logger = log.With().Logger()
+		All().Debug("logger initialisation success")
 	} else {
 		All().FailExitErr(err)
 	}
