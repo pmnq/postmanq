@@ -42,7 +42,7 @@ func (p *Post) Run() {
 		consumer.Inst(),
 	}, common.Services...)
 
-	p.run(common.NewApplicationEvent(common.InitApplicationEventKind))
+	p.run(p, common.NewApplicationEvent(common.InitApplicationEventKind))
 }
 
 // Init инициализирует приложение

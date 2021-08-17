@@ -29,7 +29,11 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 
 	err := yaml.Unmarshal(event.Data, s)
 	if err != nil {
-		logger.All().FailExitErr(err)
+		logger.All().ErrErr(err)
+	}
+
+	if len(s.Configs) == 0 {
+		logger.All().FailExit("guardians config is empty")
 		return
 	}
 

@@ -61,7 +61,11 @@ func Inst() *Service {
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
 	if err != nil {
-		logger.All().FailExitWithErr(err, "connection service can't unmarshal config")
+		logger.All().ErrWithErr(err, "connection service can't unmarshal config")
+	}
+
+	if len(s.Configs) == 0 {
+		logger.All().FailExit("connector config is empty")
 		return
 	}
 
@@ -78,48 +82,62 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 }
 
 func (s *Service) init(conf *Config, hostname string) {
-	// если указан путь до сертификата
-	if len(conf.CertFilename) > 0 {
-		conf.tlsConfig = &tls.Config{
-			ClientAuth:             tls.RequireAndVerifyClientCert,
-			CipherSuites:           cipherSuites,
-			MinVersion:             tls.VersionTLS12,
-			SessionTicketsDisabled: true,
-		}
+	conf.tlsConfig = getTLSConfig(conf.CertFilename, conf.PrivateKeyFilename, hostname)
 
-		// пытаемся прочитать сертификат
-		pemBytes, err := ioutil.ReadFile(conf.CertFilename)
-		if err == nil {
-			// получаем сертификат
-			pemBlock, _ := pem.Decode(pemBytes)
-			cert, _ := x509.ParseCertificate(pemBlock.Bytes)
-			pool := x509.NewCertPool()
-			pool.AddCert(cert)
-			conf.tlsConfig.RootCAs = pool
-			conf.tlsConfig.ClientCAs = pool
-		} else {
-			logger.By(hostname).FailExitWithErr(err, "connection service can't read certificate %s", conf.CertFilename)
-		}
-		cert, err := tls.LoadX509KeyPair(conf.CertFilename, conf.PrivateKeyFilename)
-		if err == nil {
-			conf.tlsConfig.Certificates = []tls.Certificate{
-				cert,
-			}
-		} else {
-			logger.By(hostname).FailExitWithErr(err, "connection service can't load certificate %s, private key %s", conf.CertFilename, conf.PrivateKeyFilename)
-		}
-	} else {
-		logger.By(hostname).Debug("connection service - certificate is not defined")
-	}
 	conf.addressesLen = len(conf.Addresses)
 	if conf.addressesLen == 0 {
 		logger.By(hostname).Warn("connection service - ips should be defined")
 	}
+
 	mxes, err := net.LookupMX(hostname)
-	if err == nil {
-		conf.hostname = strings.TrimRight(mxes[0].Host, ".")
-	} else {
-		logger.By(hostname).FailExit("connection service - can't lookup mx for %s", hostname)
+	if err != nil {
+		logger.By(hostname).Err("connection service - can't lookup mx for %s", hostname)
+		return
+	}
+
+	conf.hostname = strings.TrimRight(mxes[0].Host, ".")
+}
+
+func getTLSConfig(certFilename, privateKeyFilename, hostname string) *tls.Config {
+	if certFilename == "" {
+		logger.By(hostname).Debug("connection service - certificate is not defined")
+		return nil
+	}
+
+	// пытаемся прочитать сертификат
+	pemBytes, err := ioutil.ReadFile(certFilename)
+	if err != nil {
+		logger.By(hostname).ErrWithErr(err, "connection service can't read certificate %s", certFilename)
+		return nil
+	}
+
+	// получаем сертификат
+	pemBlock, _ := pem.Decode(pemBytes)
+	cert, err := x509.ParseCertificate(pemBlock.Bytes)
+	if err != nil {
+		logger.By(hostname).ErrWithErr(err, "connection parse certificate %s", certFilename)
+		return nil
+	}
+
+	pool := x509.NewCertPool()
+	pool.AddCert(cert)
+
+	key, err := tls.LoadX509KeyPair(certFilename, privateKeyFilename)
+	if err != nil {
+		logger.By(hostname).ErrWithErr(err, "connection service can't load certificate %s, private key %s", certFilename, privateKeyFilename)
+		return nil
+	}
+
+	return &tls.Config{
+		ClientAuth:             tls.RequireAndVerifyClientCert,
+		CipherSuites:           cipherSuites,
+		MinVersion:             tls.VersionTLS12,
+		SessionTicketsDisabled: true,
+		RootCAs:                pool,
+		ClientCAs:              pool,
+		Certificates: []tls.Certificate{
+			key,
+		},
 	}
 }
 

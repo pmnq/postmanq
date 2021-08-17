@@ -170,7 +170,8 @@ func (b *Binding) declare(channel *amqp.Channel) {
 		b.ExchangeArgs, // arguments
 	)
 	if err != nil {
-		logger.All().FailExitWithErr(err, "consumer can't declare exchange %s", b.Exchange)
+		logger.All().ErrWithErr(err, "consumer can't declare exchange %s", b.Exchange)
+		return
 	}
 
 	_, err = channel.QueueDeclare(
@@ -182,7 +183,8 @@ func (b *Binding) declare(channel *amqp.Channel) {
 		b.QueueArgs, // arguments
 	)
 	if err != nil {
-		logger.All().FailExitWithErr(err, "consumer can't declare queue %s", b.Queue)
+		logger.All().ErrWithErr(err, "consumer can't declare queue %s", b.Queue)
+		return
 	}
 
 	err = channel.QueueBind(
@@ -193,7 +195,8 @@ func (b *Binding) declare(channel *amqp.Channel) {
 		nil,        // arguments
 	)
 	if err != nil {
-		logger.All().FailExitWithErr(err, "consumer can't bind queue %s to exchange %s", b.Queue, b.Exchange)
+		logger.All().ErrWithErr(err, "consumer can't bind queue %s to exchange %s", b.Queue, b.Exchange)
+		return
 	}
 }
 

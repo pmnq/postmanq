@@ -88,31 +88,31 @@ func (a *Abstract) IsValidConfigFilename(filename string) bool {
 }
 
 // запускает основной цикл приложения
-func (a *Abstract) run(event *common.ApplicationEvent) {
+func (a *Abstract) run(app common.Application, event *common.ApplicationEvent) {
 	// создаем каналы для событий
-	a.InitChannels(3)
-	defer a.CloseEvents()
+	app.InitChannels(3)
+	defer app.CloseEvents()
 
-	a.OnEvent(func(ev *common.ApplicationEvent) {
+	app.OnEvent(func(ev *common.ApplicationEvent) {
 		action := actions[ev.Kind]
 
 		if preAction, ok := action.(PreFireAction); ok {
-			preAction.PreFire(a, ev)
+			preAction.PreFire(app, ev)
 		}
 
-		for _, service := range a.Services() {
-			action.Fire(a, ev, service)
+		for _, service := range app.Services() {
+			action.Fire(app, ev, service)
 		}
 
 		if postAction, ok := action.(PostFireAction); ok {
-			postAction.PostFire(a, ev)
+			postAction.PostFire(app, ev)
 		}
 	})
 
-	a.InitConfig()
+	app.InitConfig()
 
-	a.SendEvents(event)
-	<-a.Done()
+	app.SendEvents(event)
+	<-app.Done()
 }
 
 func (a *Abstract) InitConfig() {

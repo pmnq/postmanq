@@ -30,7 +30,7 @@ func (p *Publish) RunWithArgs(args ...interface{}) {
 	event.Args["envelope"] = args[4]
 	event.Args["recipient"] = args[5]
 
-	p.run(event)
+	p.run(p, event)
 }
 
 // FireRun запускает сервисы приложения

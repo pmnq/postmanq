@@ -27,7 +27,7 @@ func (r *Report) Run() {
 		consumer.Inst(),
 	}, common.Services...)
 
-	r.run(common.NewApplicationEvent(common.InitApplicationEventKind))
+	r.run(r, common.NewApplicationEvent(common.InitApplicationEventKind))
 }
 
 // запускает сервисы приложения

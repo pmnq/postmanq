@@ -19,7 +19,7 @@ type Service struct {
 	// количество отправителей
 	MailersCount int `yaml:"workers"`
 
-	Configs map[string]*Config
+	Configs map[string]*Config `yaml:"postmans"`
 
 	events       chan *common.SendEvent
 	eventsClosed bool
@@ -34,7 +34,11 @@ func Inst() common.SendingService {
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
 	if err != nil {
-		logger.All().FailExitErr(err)
+		logger.All().ErrErr(err)
+	}
+
+	if len(s.Configs) == 0 {
+		logger.All().FailExit("mailer config is empty")
 		return
 	}
 
@@ -54,17 +58,17 @@ func (s *Service) init(conf *Config, hostname string) {
 	// закрытый ключ должен быть указан обязательно
 	// поэтому даже не проверяем что указано в переменной
 	privateKey, err := ioutil.ReadFile(conf.PrivateKeyFilename)
-	if err == nil {
-		logger.By(hostname).Debug("mailer service private key %s read success", conf.PrivateKeyFilename)
-		der, _ := pem.Decode(privateKey)
-		conf.privateKey, err = x509.ParsePKCS1PrivateKey(der.Bytes)
-		if err != nil {
-			logger.By(hostname).Err("mailer service can't decode or parse private key %s", conf.PrivateKeyFilename)
-			logger.By(hostname).FailExitErr(err)
-		}
-	} else {
-		logger.By(hostname).Err("mailer service can't read private key %s", conf.PrivateKeyFilename)
-		logger.By(hostname).FailExitErr(err)
+	if err != nil {
+		logger.By(hostname).ErrWithErr(err, "mailer service can't read private key %s", conf.PrivateKeyFilename)
+		return
+	}
+
+	logger.By(hostname).Debug("mailer service private key %s read success", conf.PrivateKeyFilename)
+	der, _ := pem.Decode(privateKey)
+	conf.privateKey, err = x509.ParsePKCS1PrivateKey(der.Bytes)
+	if err != nil {
+		logger.By(hostname).ErrWithErr(err, "mailer service can't decode or parse private key %s", conf.PrivateKeyFilename)
+		return
 	}
 }
 

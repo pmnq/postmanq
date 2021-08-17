@@ -42,6 +42,9 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err = yaml.Unmarshal(event.Data, s)
 	if err != nil {
 		fmt.Println("grep service can't unmarshal config file")
+	}
+
+	if len(s.Configs) == 0 {
 		common.App.SendEvents(common.NewApplicationEvent(common.FinishApplicationEventKind))
 		return
 	}

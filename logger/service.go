@@ -18,6 +18,8 @@ type Config struct {
 
 	// название вывода логов
 	Output string `yaml:"logOutput"`
+
+	file *os.File
 }
 
 type Service struct {
@@ -27,7 +29,6 @@ type Service struct {
 }
 
 func Inst() common.SendingService {
-	// TODO fix logger configuration by domain
 	return &Service{Config: Config{
 		LevelName: "debug",
 		Output:    "stdout",
@@ -38,17 +39,17 @@ func Inst() common.SendingService {
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
 	if err != nil {
-		All().FailExitErr(err)
+		All().ErrWithErr(err, "can't unmarshal logger config")
+	}
+
+	if len(s.Configs) == 0 {
+		All().FailExit("logger config is empty")
 		return
 	}
 
-	level, err := zerolog.ParseLevel(s.LevelName)
-	if err != nil {
-		All().FailExitErr(err)
-		return
-	}
+	loggers = make(map[string]zerolog.Logger, len(s.Configs)+1)
 
-	zerolog.SetGlobalLevel(level)
+	zerolog.SetGlobalLevel(getZerologLevel(s.LevelName))
 	zerolog.TimestampFieldName = "t"
 	zerolog.LevelFieldName = "l"
 	zerolog.MessageFieldName = "m"
@@ -57,7 +58,16 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 	// default CallerMarshalFunc adds full path
 	// callerMarshalFunc adds only last 2 parts
 	zerolog.CallerMarshalFunc = callerMarshalFunc
-	log.Logger = zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
+
+	s.file = getFileByOutput(s.Output)
+	loggers[common.AllDomains] = zerolog.New(s.file).With().Timestamp().Caller().Logger()
+	log.Logger = loggers[common.AllDomains]
+
+	for domain, cfg := range s.Configs {
+		cfg.file = getFileByOutput(cfg.Output)
+		loggers[domain] = zerolog.New(cfg.file).Level(getZerologLevel(cfg.LevelName)).With().Timestamp().Caller().Logger()
+	}
+
 	All().Debug("logger initialisation success")
 }
 
@@ -70,7 +80,17 @@ func (s *Service) Event(_ *common.SendEvent) bool {
 }
 
 // закрывает канал логирования
-func (s *Service) OnFinish() {}
+func (s *Service) OnFinish() {
+	if s.file.Fd() > 2 {
+		_ = s.file.Close()
+	}
+
+	for _, cfg := range s.Configs {
+		if cfg.file.Fd() > 2 {
+			_ = cfg.file.Close()
+		}
+	}
+}
 
 func callerMarshalFunc(file string, line int) string {
 	parts := strings.Split(file, "/")
@@ -78,4 +98,26 @@ func callerMarshalFunc(file string, line int) string {
 		return strings.Join(parts[len(parts)-2:], "/") + ":" + strconv.Itoa(line)
 	}
 	return file + ":" + strconv.Itoa(line)
+}
+
+func getZerologLevel(level string) zerolog.Level {
+	if level, _ := zerolog.ParseLevel(level); level != zerolog.NoLevel {
+		return level
+	}
+
+	return zerolog.DebugLevel
+}
+
+func getFileByOutput(output string) *os.File {
+	switch output {
+	case "stdout":
+		return os.Stdout
+	default:
+		f, err := os.OpenFile(output, os.O_RDWR|os.O_CREATE, 0600)
+		if err != nil {
+			f = os.Stdout
+		}
+
+		return f
+	}
 }
