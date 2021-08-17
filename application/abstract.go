@@ -1,12 +1,18 @@
 package application
 
 import (
+	"context"
+	"fmt"
 	"io/ioutil"
+	"net/http"
+	"sync"
 	"time"
 
 	"github.com/Halfi/postmanq/common"
 	"github.com/Halfi/postmanq/logger"
 )
+
+const httpTimeout = 5 * time.Minute
 
 type FireAction interface {
 	Fire(common.Application, *common.ApplicationEvent, interface{})
@@ -24,16 +30,17 @@ type PostFireAction interface {
 
 var (
 	actions = map[common.ApplicationEventKind]FireAction{
-		common.InitApplicationEventKind:   InitFireAction((*Abstract).FireInit),
-		common.RunApplicationEventKind:    RunFireAction((*Abstract).FireRun),
-		common.FinishApplicationEventKind: FinishFireAction((*Abstract).FireFinish),
+		common.InitApplicationEventKind:        InitFireAction((*Abstract).FireInit),
+		common.RunApplicationEventKind:         RunFireAction((*Abstract).FireRun),
+		common.FinishApplicationEventKind:      FinishFireAction((*Abstract).FireFinish),
+		common.ReconfigureApplicationEventKind: ReconfigureFireAction((*Abstract).FireFinish),
 	}
 )
 
 // Abstract базовое приложение
 type Abstract struct {
-	// путь до конфигурационного файла
-	configFilename string
+	// config meta data
+	configMeta ConfigMeta
 
 	// сервисы приложения, отправляющие письма
 	services []interface{}
@@ -49,44 +56,168 @@ type Abstract struct {
 	CommonTimeout common.Timeout `yaml:"timeouts"`
 }
 
+type ConfigMeta struct {
+	// local config path
+	configFilename string
+
+	// remote config addr
+	configRemoteAddr string
+
+	// config update duration
+	configUpdateDuration time.Duration
+
+	configUpdateTimer *time.Ticker
+
+	// config data
+	configData []byte
+
+	// warning error
+	configWarning error
+
+	// error config initialisation
+	configError error
+
+	client *http.Client
+
+	rwm sync.RWMutex
+}
+
 // IsValidConfigFilename проверяет валидность пути к файлу с настройками
 func (a *Abstract) IsValidConfigFilename(filename string) bool {
 	return len(filename) > 0 && filename != common.ExampleConfigYaml
 }
 
 // запускает основной цикл приложения
-func (a *Abstract) run(app common.Application, event *common.ApplicationEvent) {
+func (a *Abstract) run(event *common.ApplicationEvent) {
 	// создаем каналы для событий
-	app.InitChannels(3)
-	defer app.CloseEvents()
+	a.InitChannels(3)
+	defer a.CloseEvents()
 
-	app.OnEvent(func(ev *common.ApplicationEvent) {
-		action := actions[event.Kind]
+	a.OnEvent(func(ev *common.ApplicationEvent) {
+		action := actions[ev.Kind]
 
 		if preAction, ok := action.(PreFireAction); ok {
-			preAction.PreFire(app, event)
+			preAction.PreFire(a, ev)
 		}
 
-		for _, service := range app.Services() {
-			action.Fire(app, event, service)
+		for _, service := range a.Services() {
+			action.Fire(a, ev, service)
 		}
 
 		if postAction, ok := action.(PostFireAction); ok {
-			postAction.PostFire(app, event)
+			postAction.PostFire(a, ev)
 		}
 	})
 
-	app.SendEvents(event)
-	<-app.Done()
+	a.InitConfig()
+
+	a.SendEvents(event)
+	<-a.Done()
 }
 
-func (a Abstract) GetConfigFilename() string {
-	return a.configFilename
+func (a *Abstract) InitConfig() {
+	a.collectConfigData()
+
+	if a.configMeta.configUpdateTimer != nil {
+		go func() {
+			for range a.configMeta.configUpdateTimer.C {
+				a.collectConfigData()
+				a.SendEvents(common.NewApplicationEvent(common.ReconfigureApplicationEventKind))
+			}
+		}()
+	}
 }
 
-// SetConfigFilename устанавливает путь к файлу с настройками
-func (a *Abstract) SetConfigFilename(configFilename string) {
-	a.configFilename = configFilename
+func (a *Abstract) collectConfigData() {
+	ctx, cancel := context.WithTimeout(context.Background(), httpTimeout*2)
+	defer cancel()
+
+	a.configMeta.configData = nil
+
+	if err := a.getRemoteConfigData(ctx); err != nil {
+		a.configMeta.configWarning = err
+	}
+
+	if a.configMeta.configData == nil {
+		if err := a.getLocalConfigData(ctx); err != nil {
+			if a.configMeta.configWarning != nil {
+				err = fmt.Errorf("remote err %s; loal error %w", a.configMeta.configWarning, err)
+			}
+			a.configMeta.configWarning = err
+		}
+	}
+
+	if a.configMeta.configData == nil {
+		a.configMeta.configError = fmt.Errorf("config file is empty")
+	}
+}
+
+func (a *Abstract) getRemoteConfigData(ctx context.Context) error {
+	if a.configMeta.client != nil && a.configMeta.configRemoteAddr != "" {
+		req, err := http.NewRequestWithContext(ctx, "GET", a.configMeta.configRemoteAddr, nil)
+		if err != nil {
+			return fmt.Errorf("create http request error %w", err)
+		}
+
+		resp, err := a.configMeta.client.Do(req)
+		if err != nil {
+			return fmt.Errorf("http client request error %w", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		cfg, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("can't read config body %w", err)
+		}
+		if cfg != nil && len(cfg) > 0 {
+			a.configMeta.rwm.Lock()
+			defer a.configMeta.rwm.Unlock()
+			a.configMeta.configData = cfg
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (a *Abstract) getLocalConfigData(_ context.Context) error {
+	cfg, err := ioutil.ReadFile(a.configMeta.configFilename)
+	if err != nil {
+		return fmt.Errorf("can't read file %s: %w", a.configMeta.configFilename, err)
+	}
+
+	if cfg != nil && len(cfg) > 0 {
+		a.configMeta.rwm.Lock()
+		defer a.configMeta.rwm.Unlock()
+		a.configMeta.configData = cfg
+		return nil
+	}
+
+	return nil
+}
+
+func (a *Abstract) SetConfigMeta(configFilename, configRemoteAddr, configUpdateDuration string) {
+	a.configMeta = ConfigMeta{configFilename: configFilename}
+
+	if configRemoteAddr != "" {
+		a.configMeta.configRemoteAddr = configRemoteAddr
+		a.configMeta.client = &http.Client{Transport: http.DefaultTransport, Timeout: httpTimeout}
+	}
+
+	if configUpdateDuration != "" {
+		var err error
+		a.configMeta.configUpdateDuration, err = time.ParseDuration(configUpdateDuration)
+		if err == nil && a.configMeta.configUpdateDuration > 0 {
+			a.configMeta.configUpdateTimer = time.NewTicker(a.configMeta.configUpdateDuration)
+		}
+	}
+}
+
+func (a *Abstract) GetConfigData() ([]byte, error, error) {
+	a.configMeta.rwm.RLock()
+	defer a.configMeta.rwm.RUnlock()
+
+	return a.configMeta.configData, a.configMeta.configWarning, a.configMeta.configError
 }
 
 // SetEvents устанавливает канал событий приложения
@@ -134,6 +265,7 @@ func (a *Abstract) Close() {
 	if !a.doneClosed {
 		a.doneClosed = true
 		a.done <- true
+		a.configMeta.configUpdateTimer.Stop()
 	}
 }
 
@@ -149,7 +281,7 @@ func (a *Abstract) FireInit(event *common.ApplicationEvent, abstractService inte
 }
 
 // Init инициализирует приложение
-func (a *Abstract) Init(event *common.ApplicationEvent) {}
+func (a *Abstract) Init(_ *common.ApplicationEvent, _ bool) {}
 
 // Run запускает приложение
 func (a *Abstract) Run() {}
@@ -175,14 +307,18 @@ func (i InitFireAction) Fire(app common.Application, event *common.ApplicationEv
 }
 
 func (i InitFireAction) PreFire(app common.Application, event *common.ApplicationEvent) {
-	// пытаемся прочитать конфигурационный файл
-	bytes, err := ioutil.ReadFile(app.GetConfigFilename())
-	if err == nil {
-		event.Data = bytes
-		app.Init(event)
-	} else {
-		logger.All().FailExitWithErr(err, "application can't read configuration file")
+	bytes, warn, err := app.GetConfigData()
+	if warn != nil {
+		logger.All().WarnWithErr(err, "application configuration read warning")
 	}
+
+	if err != nil {
+		logger.All().FailExitWithErr(err, "application can't read configuration file")
+		return
+	}
+
+	event.Data = bytes
+	app.Init(event, false)
 }
 
 func (i InitFireAction) PostFire(app common.Application, event *common.ApplicationEvent) {
@@ -205,4 +341,16 @@ func (f FinishFireAction) Fire(app common.Application, event *common.Application
 func (f FinishFireAction) PostFire(app common.Application, event *common.ApplicationEvent) {
 	time.Sleep(2 * time.Second)
 	app.Close()
+}
+
+type ReconfigureFireAction func(*Abstract, *common.ApplicationEvent, interface{})
+
+func (r ReconfigureFireAction) Fire(app common.Application, event *common.ApplicationEvent, abstractService interface{}) {
+	app.FireFinish(event, abstractService)
+}
+
+func (r ReconfigureFireAction) PostFire(app common.Application, event *common.ApplicationEvent) {
+	time.Sleep(2 * time.Second)
+	event.Kind = common.InitApplicationEventKind
+	app.SendEvents(event)
 }

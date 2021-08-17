@@ -9,13 +9,14 @@ import (
 )
 
 func main() {
-	var file string
+	var file, configURL string
 	flag.StringVar(&file, "f", common.ExampleConfigYaml, "configuration yaml file")
+	flag.StringVar(&configURL, "u", common.InvalidInputString, "remote configurations file url")
 	flag.Parse()
 
 	app := application.NewReport()
 	if app.IsValidConfigFilename(file) {
-		app.SetConfigFilename(file)
+		app.SetConfigMeta(file, configURL, "")
 		app.Run()
 	} else {
 		fmt.Println("Usage: pmq-report -f")

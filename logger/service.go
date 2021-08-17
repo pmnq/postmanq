@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"os"
 	"strconv"
 	"strings"
 
@@ -9,10 +10,6 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/Halfi/postmanq/common"
-)
-
-var (
-	service *Service
 )
 
 type Config struct {
@@ -30,41 +27,38 @@ type Service struct {
 }
 
 func Inst() common.SendingService {
-	if service == nil {
-		service = new(Service)
-		service.Config = Config{
-			LevelName: "debug",
-			Output:    "stdout",
-		}
-	}
-	return service
+	// TODO fix logger configuration by domain
+	return &Service{Config: Config{
+		LevelName: "debug",
+		Output:    "stdout",
+	}}
 }
 
 // инициализирует сервис логирования
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
-	if err == nil {
-		level, err := zerolog.ParseLevel(s.LevelName)
-		if err != nil {
-			All().FailExitErr(err)
-			return
-		}
-
-		zerolog.SetGlobalLevel(level)
-		zerolog.TimestampFieldName = "t"
-		zerolog.LevelFieldName = "l"
-		zerolog.MessageFieldName = "m"
-		zerolog.CallerFieldName = "c"
-
-		// default CallerMarshalFunc adds full path
-		// callerMarshalFunc adds only last 2 parts
-		zerolog.CallerMarshalFunc = callerMarshalFunc
-		log.Logger = log.With().Caller().Logger()
-		logger = log.With().Logger()
-		All().Debug("logger initialisation success")
-	} else {
+	if err != nil {
 		All().FailExitErr(err)
+		return
 	}
+
+	level, err := zerolog.ParseLevel(s.LevelName)
+	if err != nil {
+		All().FailExitErr(err)
+		return
+	}
+
+	zerolog.SetGlobalLevel(level)
+	zerolog.TimestampFieldName = "t"
+	zerolog.LevelFieldName = "l"
+	zerolog.MessageFieldName = "m"
+	zerolog.CallerFieldName = "c"
+
+	// default CallerMarshalFunc adds full path
+	// callerMarshalFunc adds only last 2 parts
+	zerolog.CallerMarshalFunc = callerMarshalFunc
+	log.Logger = zerolog.New(os.Stderr).With().Timestamp().Caller().Logger()
+	All().Debug("logger initialisation success")
 }
 
 // ничего не делает, авторы логов уже пишут

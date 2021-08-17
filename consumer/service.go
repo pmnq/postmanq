@@ -12,15 +12,6 @@ import (
 	"github.com/Halfi/postmanq/logger"
 )
 
-var (
-	// сервис получения сообщений
-	service common.SendingService
-
-	// канал для получения событий
-	events       = make(chan *common.SendEvent)
-	eventsClosed bool
-)
-
 // сервис получения сообщений
 type Service struct {
 	// настройка получателей сообщений
@@ -37,17 +28,14 @@ type Service struct {
 
 // создает новый сервис получения сообщений
 func Inst() common.SendingService {
-	if service == nil {
-		service := new(Service)
-		service.connections = make(map[string]*amqp.Connection)
-		service.consumers = make(map[string][]*Consumer)
-		service.assistants = make(map[string][]*Assistant)
-		return service
+	return &Service{
+		connections: make(map[string]*amqp.Connection),
+		consumers:   make(map[string][]*Consumer),
+		assistants:  make(map[string][]*Assistant),
 	}
-	return service
 }
 
-// инициализирует сервис
+// OnInit инициализирует сервис
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	logger.All().Debug("init consumer service")
 	// получаем настройки
@@ -193,20 +181,10 @@ func (s *Service) OnFinish() {
 			}
 		}
 	}
-
-	if !eventsClosed {
-		eventsClosed = true
-		close(events)
-	}
 }
 
 // Event send event
-func (s *Service) Event(ev *common.SendEvent) bool {
-	if eventsClosed {
-		return false
-	}
-
-	events <- ev
+func (s *Service) Event(_ *common.SendEvent) bool {
 	return true
 }
 

@@ -16,6 +16,9 @@ const (
 
 	// FinishApplicationEventKind завершение сервисов
 	FinishApplicationEventKind
+
+	// ReconfigureApplicationEventKind reconfigure all services
+	ReconfigureApplicationEventKind
 )
 
 // ApplicationEvent событие приложения

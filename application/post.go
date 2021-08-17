@@ -36,29 +36,32 @@ func (p *Post) Run() {
 		connector.Inst(),
 		mailer.Inst(),
 	}
-	p.services = []interface{}{
+
+	p.services = append([]interface{}{
 		logger.Inst(),
 		consumer.Inst(),
-		guardian.Inst(),
-		limiter.Inst(),
-		connector.Inst(),
-		mailer.Inst(),
-	}
-	p.run(p, common.NewApplicationEvent(common.InitApplicationEventKind))
+	}, common.Services...)
+
+	p.run(common.NewApplicationEvent(common.InitApplicationEventKind))
 }
 
 // Init инициализирует приложение
-func (p *Post) Init(event *common.ApplicationEvent) {
+func (p *Post) Init(event *common.ApplicationEvent, soft bool) {
 	// получаем настройки
 	err := yaml.Unmarshal(event.Data, p)
-	if err == nil {
-		p.CommonTimeout.Init()
-		common.DefaultWorkersCount = p.Workers
-		runtime.GOMAXPROCS(common.DefaultWorkersCount * 2)
-		logger.All().Debug("app workers count %d", p.Workers)
-	} else {
-		logger.All().FailExitErr(err)
+	if err != nil {
+		if soft {
+			logger.All().ErrErr(err)
+		} else {
+			logger.All().FailExitErr(err)
+		}
+		return
 	}
+
+	p.CommonTimeout.Init()
+	common.DefaultWorkersCount = p.Workers
+	runtime.GOMAXPROCS(common.DefaultWorkersCount * 2)
+	logger.All().Debug("app workers count %d", p.Workers)
 }
 
 // FireRun запускает сервисы приложения

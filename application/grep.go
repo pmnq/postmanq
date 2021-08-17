@@ -28,7 +28,7 @@ func (g *Grep) RunWithArgs(args ...interface{}) {
 	event.Args["recipient"] = args[1]
 	event.Args["numberLines"] = args[2]
 
-	g.run(g, event)
+	g.run(event)
 }
 
 // FireRun запускает сервисы приложения

@@ -9,16 +9,17 @@ import (
 )
 
 func main() {
-	var file, envelope, recipient string
+	var file, envelope, recipient, configURL string
 	var numberLines int
 	flag.StringVar(&file, "f", common.ExampleConfigYaml, "configuration yaml file")
+	flag.StringVar(&configURL, "u", common.InvalidInputString, "remote configurations file url")
 	flag.StringVar(&envelope, "e", common.InvalidInputString, "necessary envelope")
 	flag.StringVar(&recipient, "r", common.InvalidInputString, "necessary recipient")
 	flag.Parse()
 
 	app := application.NewGrep()
 	if app.IsValidConfigFilename(file) && recipient != common.InvalidInputString {
-		app.SetConfigFilename(file)
+		app.SetConfigMeta(file, configURL, "")
 		app.RunWithArgs(envelope, recipient, numberLines)
 	} else {
 		fmt.Println("Usage: pmq-grep -f -r [-e]")

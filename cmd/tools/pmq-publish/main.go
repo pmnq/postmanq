@@ -9,9 +9,10 @@ import (
 )
 
 func main() {
-	var file, srcQueue, destQueue, host, envelope, recipient string
+	var file, srcQueue, destQueue, host, envelope, recipient, configURL string
 	var code int
 	flag.StringVar(&file, "f", common.ExampleConfigYaml, "configuration yaml file")
+	flag.StringVar(&configURL, "u", common.InvalidInputString, "remote configurations file url")
 	flag.StringVar(&srcQueue, "s", common.InvalidInputString, "source queue")
 	flag.StringVar(&destQueue, "d", common.InvalidInputString, "destination queue")
 	flag.StringVar(&host, "h", common.InvalidInputString, "amqp server hostname")
@@ -24,7 +25,7 @@ func main() {
 	if app.IsValidConfigFilename(file) &&
 		srcQueue != common.InvalidInputString &&
 		destQueue != common.InvalidInputString {
-		app.SetConfigFilename(file)
+		app.SetConfigMeta(file, configURL, "")
 		app.RunWithArgs(srcQueue, destQueue, host, code, envelope, recipient)
 	} else {
 		fmt.Println("Usage: pmq-publish -f -s -d [-h] [-c] [-e] [-r]")

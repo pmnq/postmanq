@@ -14,43 +14,39 @@ import (
 
 const defaultDkimSelector = "mail"
 
-var (
-	// сервис отправки писем
-	service *Service
-	// канал для писем
-	events       = make(chan *common.SendEvent)
-	eventsClosed bool
-)
-
 // сервис отправки писем
 type Service struct {
 	// количество отправителей
 	MailersCount int `yaml:"workers"`
 
-	Configs map[string]*Config `yaml:"postmans"`
+	Configs map[string]*Config
+
+	events       chan *common.SendEvent
+	eventsClosed bool
 }
 
 // создает новый сервис отправки писем
 func Inst() common.SendingService {
-	if service == nil {
-		service = new(Service)
-	}
-	return service
+	return new(Service)
 }
 
 // инициализирует сервис отправки писем
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
-	if err == nil {
-		for name, config := range s.Configs {
-			s.init(config, name)
-		}
-
-		if s.MailersCount == 0 {
-			s.MailersCount = common.DefaultWorkersCount
-		}
-	} else {
+	if err != nil {
 		logger.All().FailExitErr(err)
+		return
+	}
+
+	s.events = make(chan *common.SendEvent)
+	s.eventsClosed = false
+
+	for name, config := range s.Configs {
+		s.init(config, name)
+	}
+
+	if s.MailersCount == 0 {
+		s.MailersCount = common.DefaultWorkersCount
 	}
 }
 
@@ -76,25 +72,25 @@ func (s *Service) init(conf *Config, hostname string) {
 func (s *Service) OnRun() {
 	logger.All().Debug("run mailers apps...")
 	for i := 0; i < s.MailersCount; i++ {
-		go newMailer(i + 1)
+		go newMailer(i+1, s)
 	}
 }
 
 // Event send event
 func (s *Service) Event(ev *common.SendEvent) bool {
-	if eventsClosed {
+	if s.eventsClosed {
 		return false
 	}
 
-	events <- ev
+	s.events <- ev
 	return true
 }
 
 // завершает работу сервиса отправки писем
 func (s *Service) OnFinish() {
-	if !eventsClosed {
-		eventsClosed = true
-		close(events)
+	if !s.eventsClosed {
+		s.eventsClosed = true
+		close(s.events)
 	}
 }
 

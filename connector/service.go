@@ -60,18 +60,20 @@ func Inst() *Service {
 // OnInit инициализирует сервис соединений
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
-	if err == nil {
-		for name, config := range s.Configs {
-			if config.MXHostname != "" {
-				name = config.MXHostname
-			}
-			s.init(config, name)
-		}
-		if s.ConnectorsCount == 0 {
-			s.ConnectorsCount = common.DefaultWorkersCount
-		}
-	} else {
+	if err != nil {
 		logger.All().FailExitWithErr(err, "connection service can't unmarshal config")
+		return
+	}
+
+	for name, config := range s.Configs {
+		if config.MXHostname != "" {
+			name = config.MXHostname
+		}
+		s.init(config, name)
+	}
+
+	if s.ConnectorsCount == 0 {
+		s.ConnectorsCount = common.DefaultWorkersCount
 	}
 }
 
@@ -146,6 +148,25 @@ func (s *Service) OnFinish() {
 	if !eventsClosed {
 		eventsClosed = true
 		close(events)
+	}
+}
+
+func (s *Service) Reconfigure(event *common.ApplicationEvent) {
+	err := yaml.Unmarshal(event.Data, s)
+	if err != nil {
+		logger.All().ErrWithErr(err, "connection service can't unmarshal config")
+		return
+	}
+
+	for name, config := range s.Configs {
+		if config.MXHostname != "" {
+			name = config.MXHostname
+		}
+		s.init(config, name)
+	}
+
+	if s.ConnectorsCount == 0 {
+		s.ConnectorsCount = common.DefaultWorkersCount
 	}
 }
 

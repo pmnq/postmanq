@@ -6,18 +6,20 @@ import (
 )
 
 // Cleaner чистильщик, проверяет значения ограничений и обнуляет значения ограничений
-type Cleaner struct{}
+type Cleaner struct {
+	service *Service
+}
 
 // создает нового чистильщика
-func newCleaner() {
-	new(Cleaner).clean()
+func newCleaner(service *Service) {
+	(&Cleaner{service: service}).clean()
 }
 
 // проверяет значения ограничений и обнуляет значения ограничений
 func (c *Cleaner) clean() {
-	for now := range ticker.C {
+	for now := range c.service.ticker.C {
 		// смотрим все ограничения
-		for _, conf := range service.Configs {
+		for _, conf := range c.service.Configs {
 			for _, limit := range conf.Limits {
 				// проверяем дату последнего изменения ограничения
 				if !limit.isValidDuration(now) {
