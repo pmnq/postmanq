@@ -80,7 +80,10 @@ receiveConnect:
 		targetClient.Wakeup()
 		event.Client = targetClient
 		// передаем событие отправителю
-		event.Iterator.Next().(common.SendingService).Event(event.SendEvent)
+		next := event.Iterator.Next()
+		if next != nil {
+			next.(common.SendingService).Event(event.SendEvent)
+		}
 	}
 	return
 

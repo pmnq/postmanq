@@ -3,6 +3,9 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Halfi/postmanq/application"
 	"github.com/Halfi/postmanq/common"
@@ -22,6 +25,14 @@ func main() {
 	flag.Parse()
 
 	app := application.NewPublish()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		app.SendEvents(common.NewApplicationEvent(common.FinishApplicationEventKind))
+	}()
+
 	if app.IsValidConfigFilename(file) &&
 		srcQueue != common.InvalidInputString &&
 		destQueue != common.InvalidInputString {

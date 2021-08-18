@@ -1,8 +1,6 @@
 package limiter
 
 import (
-	"time"
-
 	"gopkg.in/yaml.v3"
 
 	"github.com/Halfi/postmanq/common"
@@ -16,14 +14,14 @@ type Service struct {
 
 	Configs map[string]*Config `yaml:"postmans"`
 
-	ticker       *time.Ticker
+	cleaner      *Cleaner
 	events       chan *common.SendEvent
 	eventsClosed bool
 }
 
 // Inst создает сервис ограничений
 func Inst() common.SendingService {
-	return &Service{ticker: time.NewTicker(time.Second)}
+	return &Service{}
 }
 
 // OnInit инициализирует сервис
@@ -42,6 +40,8 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 
 	s.events = make(chan *common.SendEvent)
 	s.eventsClosed = false
+
+	s.cleaner = newCleaner(s)
 
 	for name, config := range s.Configs {
 		s.init(config, name)
@@ -67,7 +67,7 @@ func (s *Service) init(conf *Config, hostname string) {
 // OnRun запускает проверку ограничений и очистку значений лимитов
 func (s *Service) OnRun() {
 	// сразу запускаем проверку значений ограничений
-	go newCleaner(s)
+	go s.cleaner.run()
 	for i := 0; i < s.LimitersCount; i++ {
 		go newLimiter(i+1, s)
 	}
@@ -88,6 +88,8 @@ func (s *Service) OnFinish() {
 	if !s.eventsClosed {
 		s.eventsClosed = true
 		close(s.events)
+		s.cleaner.stop()
+		s.cleaner = nil
 	}
 }
 
