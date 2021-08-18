@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net"
 	"strings"
+	"sync"
 
 	"gopkg.in/yaml.v3"
 
@@ -17,13 +18,6 @@ import (
 var (
 	// сервис создания соединения
 	service *Service
-
-	// канал для приема событий отправки писем
-	events       = make(chan *common.SendEvent)
-	eventsClosed bool
-
-	// почтовые сервисы будут хранится в карте по домену
-	mailServers = make(map[string]*MailServer)
 
 	cipherSuites = []uint16{
 		tls.TLS_RSA_WITH_AES_128_CBC_SHA,
@@ -47,6 +41,40 @@ type Service struct {
 	ConnectorsCount int `yaml:"workers"`
 
 	Configs map[string]*Config `yaml:"postmans"`
+
+	preparers  []*Preparer
+	seekers    []*Seeker
+	connectors []*Connector
+
+	connectorEvents chan *ConnectionEvent
+	seekerEvents    chan *ConnectionEvent
+
+	events       chan *common.SendEvent
+	eventsClosed bool
+
+	mailServers *MailServers
+}
+
+type MailServers struct {
+	servers map[string]*MailServer
+	rwm     sync.RWMutex
+}
+
+func NewMailServers() *MailServers {
+	return &MailServers{servers: make(map[string]*MailServer)}
+}
+
+func (ms *MailServers) Get(hostname string) (*MailServer, bool) {
+	ms.rwm.RLock()
+	defer ms.rwm.RUnlock()
+	server, ok := ms.servers[hostname]
+	return server, ok
+}
+
+func (ms *MailServers) Set(hostname string, s *MailServer) {
+	ms.rwm.Lock()
+	defer ms.rwm.Unlock()
+	ms.servers[hostname] = s
 }
 
 // Inst создает новый сервис соединений
@@ -78,6 +106,24 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 
 	if s.ConnectorsCount == 0 {
 		s.ConnectorsCount = common.DefaultWorkersCount
+	}
+
+	s.mailServers = NewMailServers()
+
+	s.events = make(chan *common.SendEvent)
+	s.eventsClosed = false
+
+	s.connectorEvents = make(chan *ConnectionEvent)
+	s.seekerEvents = make(chan *ConnectionEvent)
+
+	s.preparers = make([]*Preparer, s.ConnectorsCount)
+	s.seekers = make([]*Seeker, s.ConnectorsCount)
+	s.connectors = make([]*Connector, s.ConnectorsCount)
+	for i := 0; i < s.ConnectorsCount; i++ {
+		id := i + 1
+		s.preparers[i] = newPreparer(id, s.events, s.connectorEvents, s.seekerEvents)
+		s.seekers[i] = newSeeker(id, s.seekerEvents, s.mailServers)
+		s.connectors[i] = newConnector(id, s.connectorEvents)
 	}
 }
 
@@ -143,29 +189,38 @@ func getTLSConfig(certFilename, privateKeyFilename, hostname string) *tls.Config
 
 // OnRun запускает горутины
 func (s *Service) OnRun() {
-	for i := 0; i < s.ConnectorsCount; i++ {
-		id := i + 1
-		go newPreparer(id)
-		go newSeeker(id)
-		go newConnector(id)
+	for i := range s.preparers {
+		go s.preparers[i].run()
+	}
+	for i := range s.seekers {
+		go s.seekers[i].run()
+	}
+	for i := range s.connectors {
+		go s.connectors[i].run()
 	}
 }
 
 // Event send event
 func (s *Service) Event(ev *common.SendEvent) bool {
-	if eventsClosed {
+	if s.eventsClosed {
 		return false
 	}
 
-	events <- ev
+	s.events <- ev
 	return true
 }
 
 // OnFinish завершает работу сервиса соединений
 func (s *Service) OnFinish() {
-	if !eventsClosed {
-		eventsClosed = true
-		close(events)
+	if !s.eventsClosed {
+		s.eventsClosed = true
+		close(s.events)
+		close(s.connectorEvents)
+		close(s.seekerEvents)
+		s.mailServers = nil
+		s.preparers = nil
+		s.seekers = nil
+		s.connectors = nil
 	}
 }
 

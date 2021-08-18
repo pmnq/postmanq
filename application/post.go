@@ -12,6 +12,7 @@ import (
 	"github.com/Halfi/postmanq/limiter"
 	"github.com/Halfi/postmanq/logger"
 	"github.com/Halfi/postmanq/mailer"
+	"github.com/Halfi/postmanq/webservice"
 )
 
 // Post приложение, рассылающее письма
@@ -39,6 +40,7 @@ func (p *Post) Run() {
 
 	p.services = append([]interface{}{
 		logger.Inst(),
+		webservice.Inst(),
 		consumer.Inst(),
 	}, common.Services...)
 

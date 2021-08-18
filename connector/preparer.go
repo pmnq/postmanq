@@ -14,17 +14,20 @@ import (
 type Preparer struct {
 	// Идентификатор для логов
 	id int
+
+	events          chan *common.SendEvent
+	connectorEvents chan *ConnectionEvent
+	seekerEvents    chan *ConnectionEvent
 }
 
 // создает и запускает нового заготовщика
-func newPreparer(id int) {
-	preparer := &Preparer{id}
-	preparer.run()
+func newPreparer(id int, events chan *common.SendEvent, connectorEvents, seekerEvents chan *ConnectionEvent) *Preparer {
+	return &Preparer{id: id, events: events, connectorEvents: connectorEvents, seekerEvents: seekerEvents}
 }
 
 // запускает прослушивание событий отправки писем
 func (p *Preparer) run() {
-	for event := range events {
+	for event := range p.events {
 		p.prepare(event)
 	}
 }
@@ -43,14 +46,14 @@ func (p *Preparer) prepare(event *common.SendEvent) {
 
 connectToMailServer:
 	// отправляем событие сбора информации о сервере
-	seekerEvents <- connectionEvent
+	p.seekerEvents <- connectionEvent
 	server := <-connectionEvent.servers
 	switch server.status {
 	case LookupMailServerStatus:
 		goto waitLookup
 	case SuccessMailServerStatus:
 		connectionEvent.server = server
-		connectorEvents <- connectionEvent
+		p.connectorEvents <- connectionEvent
 	case ErrorMailServerStatus:
 		mailer.ReturnMail(
 			event,

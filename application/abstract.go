@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Halfi/postmanq/common"
@@ -264,7 +267,7 @@ func (a *Abstract) Done() <-chan bool {
 func (a *Abstract) Close() {
 	if !a.doneClosed {
 		a.doneClosed = true
-		a.done <- true
+		close(a.done)
 		a.configMeta.configUpdateTimer.Stop()
 	}
 }
@@ -307,6 +310,13 @@ func (i InitFireAction) Fire(app common.Application, event *common.ApplicationEv
 }
 
 func (i InitFireAction) PreFire(app common.Application, event *common.ApplicationEvent) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		app.SendEvents(common.NewApplicationEvent(common.FinishApplicationEventKind))
+	}()
+
 	bytes, warn, err := app.GetConfigData()
 	if warn != nil {
 		logger.All().WarnWithErr(err, "application configuration read warning")
