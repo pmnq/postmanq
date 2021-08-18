@@ -8,20 +8,79 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  BUILDX_VERSIONS: linux/amd64
+  BUILDX_VERSIONS: linux/amd64,linux/arm64,linux/arm/v7
+  GO_VERSION: 1.17
 
 jobs:
-  build-and-push-image:
+  build-go:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
         with:
           fetch-depth: 2
+
+      - name: Setup go
+        id: go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Cache go
+        uses: actions/cache@v2.1.6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Cache app build
+        id: app_cache
+        uses: actions/cache@v2.1.6
+        with:
+          path: ./bin/
+          key: ${{ runner.os }}-webapp-${{ hashFiles('bin') }}
+
+      - name: Build go binaries
+        run: |
+          export CGO_ENABLED=0
+          for TARGETPLATFORM in $( echo ${{ env.BUILDX_VERSIONS }} | tr -s ',' ' ' ); do
+             time go build -ldflags="-d -s -w" -o ./bin/${TARGETPLATFORM}/postmanq -a cmd/postmanq/main.go &
+             time go build -ldflags="-d -s -w" -o ./bin/${TARGETPLATFORM}/pmq-grep -a cmd/tools/pmq-grep/main.go &
+             time go build -ldflags="-d -s -w" -o ./bin/${TARGETPLATFORM}/pmq-publish -a cmd/tools/pmq-publish/main.go &
+             time go build -ldflags="-d -s -w" -o ./bin/${TARGETPLATFORM}/pmq-report -a cmd/tools/pmq-report/main.go &
+             time go build -ldflags="-d -s -w" -o ./bin/${TARGETPLATFORM}/healthcheck -a cmd/healthcheck/main.go &
+          done
+          wait
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: application
+          path: |
+            ./bin/
+            ./build/
+            ./config.yaml
+
+  build-and-publish-image:
+    needs: build-go
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - docker: postman
+            tagSuffix: ""
+          - docker: postman/alpine
+            tagSuffix: "-alpine"
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v2
+        with:
+          name: application
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
@@ -45,6 +104,8 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{major}}.{{minor}}.{{patch}}
+          flavor: |
+            suffix=${{ matrix.tagSuffix }},onlatest=true
 
       - name: Cache Docker layers
         uses: actions/cache@v2.1.6
@@ -59,6 +120,7 @@ jobs:
         id: docker_build
         uses: docker/build-push-action@v2
         with:
+          file: build/${{ matrix.docker }}/Dockerfile
           context: .
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
