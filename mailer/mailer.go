@@ -17,17 +17,19 @@ import (
 type Mailer struct {
 	// идентификатор для логов
 	id int
+
+	service *Service
 }
 
 // создает нового отправителя
-func newMailer(id int) {
-	mailer := &Mailer{id}
+func newMailer(id int, service *Service) {
+	mailer := &Mailer{id: id, service: service}
 	mailer.run()
 }
 
 // запускает отправителя
 func (m *Mailer) run() {
-	for event := range events {
+	for event := range m.service.events {
 		m.sendMail(event)
 	}
 }
@@ -48,8 +50,8 @@ func (m *Mailer) prepare(message *common.MailMessage) {
 	options := &dkim.SignOptions{
 		Domain:                 message.HostnameFrom,
 		Identifier:             message.Envelope,
-		Selector:               service.getDkimSelector(message.HostnameFrom),
-		Signer:                 service.getPrivateKey(message.HostnameFrom),
+		Selector:               m.service.getDkimSelector(message.HostnameFrom),
+		Signer:                 m.service.getPrivateKey(message.HostnameFrom),
 		HeaderCanonicalization: dkim.CanonicalizationRelaxed,
 		BodyCanonicalization:   dkim.CanonicalizationRelaxed,
 		HeaderKeys: []string{

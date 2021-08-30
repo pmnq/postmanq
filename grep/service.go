@@ -14,9 +14,6 @@ import (
 )
 
 var (
-	// сервис ищущий сообщения в логе об отправке письма
-	service *Service
-
 	// регулярное выражение, по которому находим начало отправки
 	mailIdRegex = regexp.MustCompile(`mail#((\d)+)+`)
 )
@@ -36,23 +33,24 @@ type Service struct {
 
 // создает новый сервис поиска по логам
 func Inst() common.GrepService {
-	if service == nil {
-		service = new(Service)
-	}
-	return service
+	return new(Service)
 }
 
 // инициализирует сервис
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	var err error
 	err = yaml.Unmarshal(event.Data, s)
-	if err == nil {
-		for _, config := range s.Configs {
-			s.init(config)
-		}
-	} else {
+	if err != nil {
 		fmt.Println("grep service can't unmarshal config file")
+	}
+
+	if len(s.Configs) == 0 {
 		common.App.SendEvents(common.NewApplicationEvent(common.FinishApplicationEventKind))
+		return
+	}
+
+	for _, config := range s.Configs {
+		s.init(config)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/Halfi/postmanq/limiter"
 	"github.com/Halfi/postmanq/logger"
 	"github.com/Halfi/postmanq/mailer"
+	"github.com/Halfi/postmanq/webservice"
 )
 
 // Post приложение, рассылающее письма
@@ -36,29 +37,33 @@ func (p *Post) Run() {
 		connector.Inst(),
 		mailer.Inst(),
 	}
-	p.services = []interface{}{
+
+	p.services = append([]interface{}{
 		logger.Inst(),
+		webservice.Inst(),
 		consumer.Inst(),
-		guardian.Inst(),
-		limiter.Inst(),
-		connector.Inst(),
-		mailer.Inst(),
-	}
+	}, common.Services...)
+
 	p.run(p, common.NewApplicationEvent(common.InitApplicationEventKind))
 }
 
 // Init инициализирует приложение
-func (p *Post) Init(event *common.ApplicationEvent) {
+func (p *Post) Init(event *common.ApplicationEvent, soft bool) {
 	// получаем настройки
 	err := yaml.Unmarshal(event.Data, p)
-	if err == nil {
-		p.CommonTimeout.Init()
-		common.DefaultWorkersCount = p.Workers
-		runtime.GOMAXPROCS(common.DefaultWorkersCount * 2)
-		logger.All().Debug("app workers count %d", p.Workers)
-	} else {
-		logger.All().FailExitErr(err)
+	if err != nil {
+		if soft {
+			logger.All().ErrErr(err)
+		} else {
+			logger.All().FailExitErr(err)
+		}
+		return
 	}
+
+	p.CommonTimeout.Init()
+	common.DefaultWorkersCount = p.Workers
+	runtime.GOMAXPROCS(common.DefaultWorkersCount * 2)
+	logger.All().Debug("app workers count %d", p.Workers)
 }
 
 // FireRun запускает сервисы приложения

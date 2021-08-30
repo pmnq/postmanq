@@ -23,16 +23,16 @@ var (
 
 // получатель сообщений из очереди
 type Consumer struct {
-	id      int
-	connect *amqp.Connection
-	binding *Binding
+	id        int
+	connector *amqpConnector
+	binding   *Binding
 }
 
 // создает нового получателя
-func NewConsumer(id int, connect *amqp.Connection, binding *Binding) *Consumer {
+func NewConsumer(id int, connect *amqpConnector, binding *Binding) *Consumer {
 	app := new(Consumer)
 	app.id = id
-	app.connect = connect
+	app.connector = connect
 	app.binding = binding
 	return app
 }
@@ -46,7 +46,7 @@ func (c *Consumer) run() {
 
 // подключается к очереди для получения сообщений
 func (c *Consumer) consume(id int) {
-	channel, err := c.connect.Channel()
+	channel, err := c.connector.GetConnect().Channel()
 	if err != nil {
 		logger.All().Warn("consumer#%d, handler#%d can't get channel %s", c.id, id, c.binding.Queue)
 		return
@@ -276,7 +276,7 @@ func (c *Consumer) publishDelayedMessage(channel *amqp.Channel, bindingType comm
 
 // получает письма из всех очередей с ошибками
 func (c *Consumer) consumeFailureMessages(group *sync.WaitGroup) {
-	channel, err := c.connect.Channel()
+	channel, err := c.connector.GetConnect().Channel()
 	if err == nil {
 		for _, failureBinding := range c.binding.failureBindings {
 			for {
@@ -301,7 +301,7 @@ func (c *Consumer) consumeFailureMessages(group *sync.WaitGroup) {
 
 // получает сообщения из одной очереди и кладет их в другую
 func (c *Consumer) consumeAndPublishMessages(event *common.ApplicationEvent, group *sync.WaitGroup) {
-	channel, err := c.connect.Channel()
+	channel, err := c.connector.GetConnect().Channel()
 	if err == nil {
 		var envelopeRegex, recipientRegex *regexp.Regexp
 		srcBinding := c.findBindingByQueueName(event.GetStringArg("srcQueue"))

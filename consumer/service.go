@@ -12,14 +12,22 @@ import (
 	"github.com/Halfi/postmanq/logger"
 )
 
-var (
-	// сервис получения сообщений
-	service common.SendingService
+type amqpConnector struct {
+	connect *amqp.Connection
+	rwm     sync.RWMutex
+}
 
-	// канал для получения событий
-	events       = make(chan *common.SendEvent)
-	eventsClosed bool
-)
+func (ac *amqpConnector) SetConnect(connect *amqp.Connection) {
+	ac.rwm.Lock()
+	defer ac.rwm.Unlock()
+	ac.connect = connect
+}
+
+func (ac *amqpConnector) GetConnect() *amqp.Connection {
+	ac.rwm.RLock()
+	defer ac.rwm.RUnlock()
+	return ac.connect
+}
 
 // сервис получения сообщений
 type Service struct {
@@ -27,33 +35,36 @@ type Service struct {
 	Configs []*Config `yaml:"consumers"`
 
 	// подключения к очередям
-	connections map[string]*amqp.Connection
+	connections map[string]*amqpConnector
 
 	// получатели сообщений из очереди
 	consumers map[string][]*Consumer
 
 	assistants map[string][]*Assistant
+
+	finish bool
 }
 
 // создает новый сервис получения сообщений
 func Inst() common.SendingService {
-	if service == nil {
-		service := new(Service)
-		service.connections = make(map[string]*amqp.Connection)
-		service.consumers = make(map[string][]*Consumer)
-		service.assistants = make(map[string][]*Assistant)
-		return service
+	return &Service{
+		connections: make(map[string]*amqpConnector),
+		consumers:   make(map[string][]*Consumer),
+		assistants:  make(map[string][]*Assistant),
 	}
-	return service
 }
 
-// инициализирует сервис
+// OnInit инициализирует сервис
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	logger.All().Debug("init consumer service")
 	// получаем настройки
 	err := yaml.Unmarshal(event.Data, s)
 	if err != nil {
-		logger.All().FailExitWithErr(err, "consumer service can't unmarshal config")
+		logger.All().ErrWithErr(err, "consumer service can't unmarshal config")
+	}
+
+	if len(s.Configs) == 0 {
+		logger.All().FailExit("consumer config is empty")
 		return
 	}
 
@@ -62,14 +73,17 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 	for _, config := range s.Configs {
 		connect, err := amqp.Dial(config.URI)
 		if err != nil {
-			logger.All().FailExitWithErr(err, "consumer service can't connect to %s", config.URI)
-			return
+			logger.All().ErrWithErr(err, "consumer service can't connect to %s", config.URI)
+			continue
 		}
 
-		channel, err := connect.Channel()
+		connector := new(amqpConnector)
+		connector.SetConnect(connect)
+
+		channel, err := connector.GetConnect().Channel()
 		if err != nil {
-			logger.All().FailExitWithErr(err, "consumer service can't get channel to %s", config.URI)
-			return
+			logger.All().ErrWithErr(err, "consumer service can't get channel to %s", config.URI)
+			continue
 		}
 
 		consumers := make([]*Consumer, len(config.Bindings))
@@ -96,7 +110,7 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 			}
 
 			consumersCount++
-			consumers[i] = NewConsumer(consumersCount, connect, binding)
+			consumers[i] = NewConsumer(consumersCount, connector, binding)
 		}
 
 		assistants := make([]*Assistant, len(config.Assistants))
@@ -118,39 +132,43 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 			assistantsCount++
 			assistants[i] = &Assistant{
 				id:           assistantsCount,
-				connect:      connect,
+				connector:    connector,
 				srcBinding:   assistantBinding,
 				destBindings: destBindings,
 			}
 		}
 
-		s.connections[config.URI] = connect
+		s.connections[config.URI] = connector
 		s.consumers[config.URI] = consumers
 		s.assistants[config.URI] = assistants
 		// слушаем закрытие соединения
-		s.reconnect(connect, config)
+		s.reconnect(connector, config)
 	}
 }
 
 // объявляет слушателя закрытия соединения
-func (s *Service) reconnect(connect *amqp.Connection, config *Config) {
-	closeErrors := connect.NotifyClose(make(chan *amqp.Error))
+func (s *Service) reconnect(connector *amqpConnector, config *Config) {
+	closeErrors := connector.GetConnect().NotifyClose(make(chan *amqp.Error))
 	go s.notifyCloseError(config, closeErrors)
 }
 
 // слушает закрытие соединения
 func (s *Service) notifyCloseError(config *Config, closeErrors chan *amqp.Error) {
 	for closeError := range closeErrors {
+		if s.finish {
+			return
+		}
+
 		logger.All().Warn("consumer service close connection %s with error - %v, restart...", config.URI, closeError)
 		connect, err := amqp.Dial(config.URI)
 		if err == nil {
-			s.connections[config.URI] = connect
-			if apps, ok := s.consumers[config.URI]; ok {
-				for _, app := range apps {
-					app.connect = connect
-				}
-				s.reconnect(connect, config)
+			connector, ok := s.connections[config.URI]
+			if !ok {
+				s.connections[config.URI] = new(amqpConnector)
 			}
+			connector.SetConnect(connect)
+
+			s.reconnect(connector, config)
 			logger.All().Debug("consumer service reconnect to amqp server %s", config.URI)
 		} else {
 			logger.All().WarnWithErr(err, "consumer service can't reconnect to amqp server %s", config.URI)
@@ -185,28 +203,23 @@ func (s *Service) runAssistants(assistants []*Assistant) {
 // останавливает получателей
 func (s *Service) OnFinish() {
 	logger.All().Debug("stop consumers...")
-	for _, connect := range s.connections {
-		if connect != nil {
-			err := connect.Close()
+	s.finish = true
+	for _, connector := range s.connections {
+		if connector != nil && connector.GetConnect() != nil {
+			err := connector.GetConnect().Close()
 			if err != nil {
 				logger.All().WarnErr(err)
 			}
 		}
 	}
 
-	if !eventsClosed {
-		eventsClosed = true
-		close(events)
-	}
+	s.connections = make(map[string]*amqpConnector)
+	s.consumers = make(map[string][]*Consumer)
+	s.assistants = make(map[string][]*Assistant)
 }
 
 // Event send event
-func (s *Service) Event(ev *common.SendEvent) bool {
-	if eventsClosed {
-		return false
-	}
-
-	events <- ev
+func (s *Service) Event(_ *common.SendEvent) bool {
 	return true
 }
 

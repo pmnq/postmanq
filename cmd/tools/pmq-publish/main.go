@@ -3,15 +3,19 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Halfi/postmanq/application"
 	"github.com/Halfi/postmanq/common"
 )
 
 func main() {
-	var file, srcQueue, destQueue, host, envelope, recipient string
+	var file, srcQueue, destQueue, host, envelope, recipient, configURL string
 	var code int
 	flag.StringVar(&file, "f", common.ExampleConfigYaml, "configuration yaml file")
+	flag.StringVar(&configURL, "u", common.InvalidInputString, "remote configurations file url")
 	flag.StringVar(&srcQueue, "s", common.InvalidInputString, "source queue")
 	flag.StringVar(&destQueue, "d", common.InvalidInputString, "destination queue")
 	flag.StringVar(&host, "h", common.InvalidInputString, "amqp server hostname")
@@ -21,10 +25,18 @@ func main() {
 	flag.Parse()
 
 	app := application.NewPublish()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		app.SendEvents(common.NewApplicationEvent(common.FinishApplicationEventKind))
+	}()
+
 	if app.IsValidConfigFilename(file) &&
 		srcQueue != common.InvalidInputString &&
 		destQueue != common.InvalidInputString {
-		app.SetConfigFilename(file)
+		app.SetConfigMeta(file, configURL, "")
 		app.RunWithArgs(srcQueue, destQueue, host, code, envelope, recipient)
 	} else {
 		fmt.Println("Usage: pmq-publish -f -s -d [-h] [-c] [-e] [-r]")

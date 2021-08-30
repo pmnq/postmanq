@@ -10,18 +10,18 @@ import (
 // Limiter ограничитель, проверяет количество отправленных писем почтовому сервису
 type Limiter struct {
 	// идентификатор для логов
-	id int
+	id      int
+	service *Service
 }
 
 // создает нового ограничителя
-func newLimiter(id int) {
-	limiter := &Limiter{id}
-	limiter.run()
+func newLimiter(id int, service *Service) {
+	(&Limiter{id: id, service: service}).run()
 }
 
 // запускает ограничителя
 func (l *Limiter) run() {
-	for event := range events {
+	for event := range l.service.events {
 		l.check(event)
 	}
 }
@@ -30,7 +30,7 @@ func (l *Limiter) run() {
 // если количество превышено, отправляет письмо в отложенную очередь
 func (l *Limiter) check(event *common.SendEvent) {
 	logger.By(event.Message.HostnameFrom).Info("limiter#%d-%d check limit for mail", l.id, event.Message.Id)
-	limit := service.getLimit(event.Message.HostnameFrom, event.Message.HostnameTo)
+	limit := l.service.getLimit(event.Message.HostnameFrom, event.Message.HostnameTo)
 	// пытаемся найти ограничения для почтового сервиса
 	if limit == nil {
 		logger.By(event.Message.HostnameFrom).Debug("limiter#%d-%d not found limit for %s", l.id, event.Message.Id, event.Message.HostnameTo)

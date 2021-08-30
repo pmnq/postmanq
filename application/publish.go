@@ -29,6 +29,7 @@ func (p *Publish) RunWithArgs(args ...interface{}) {
 	event.Args["code"] = args[3]
 	event.Args["envelope"] = args[4]
 	event.Args["recipient"] = args[5]
+
 	p.run(p, event)
 }
 

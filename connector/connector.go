@@ -12,25 +12,22 @@ import (
 	"github.com/Halfi/postmanq/mailer"
 )
 
-var (
-	connectorEvents = make(chan *ConnectionEvent)
-)
-
 // соединитель, устанавливает соединение к почтовому сервису
 type Connector struct {
 	// Идентификатор для логов
 	id int
+
+	connectorEvents chan *ConnectionEvent
 }
 
 // создает и запускает новый соединитель
-func newConnector(id int) {
-	connector := &Connector{id}
-	connector.run()
+func newConnector(id int, connectorEvents chan *ConnectionEvent) *Connector {
+	return &Connector{id: id, connectorEvents: connectorEvents}
 }
 
 // запускает прослушивание событий создания соединений
 func (c *Connector) run() {
-	for event := range connectorEvents {
+	for event := range c.connectorEvents {
 		c.connect(event)
 	}
 }
@@ -83,7 +80,10 @@ receiveConnect:
 		targetClient.Wakeup()
 		event.Client = targetClient
 		// передаем событие отправителю
-		event.Iterator.Next().(common.SendingService).Event(event.SendEvent)
+		next := event.Iterator.Next()
+		if next != nil {
+			next.(common.SendingService).Event(event.SendEvent)
+		}
 	}
 	return
 

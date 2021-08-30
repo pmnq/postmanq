@@ -41,9 +41,14 @@ var (
 // Application проект содержит несколько приложений: pmq-grep, pmq-publish, pmq-report, postmanq и т.д.
 // чтобы упростить и стандартизировать приложения, разработан этот интерфейс
 type Application interface {
-	GetConfigFilename() string
-	// SetConfigFilename устанавливает путь к файлу с настройками
-	SetConfigFilename(string)
+	// GetConfigData get config data
+	GetConfigData() ([]byte, error, error)
+
+	// SetConfigMeta set config meta data
+	SetConfigMeta(configFilename, configRemoteAddr, configUpdateDuration string)
+
+	// InitConfig initialize config data
+	InitConfig()
 
 	// IsValidConfigFilename проверяет валидность пути к файлу с настройками
 	IsValidConfigFilename(string) bool
@@ -79,7 +84,7 @@ type Application interface {
 	FireFinish(*ApplicationEvent, interface{})
 
 	// Init инициализирует приложение
-	Init(*ApplicationEvent)
+	Init(*ApplicationEvent, bool)
 
 	// Run запускает приложение
 	Run()

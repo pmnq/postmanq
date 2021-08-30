@@ -14,9 +14,6 @@ import (
 )
 
 var (
-	// сервис аналитики
-	service = new(Service)
-
 	// поля для агрегации по коду
 	codeFields = []interface{}{
 		"Code",
@@ -74,12 +71,13 @@ type Service struct {
 
 // возвращает объект сервиса
 func Inst() *Service {
-	return service
+	return new(Service)
 }
 
 // инициализирует сервис
 func (s *Service) OnInit(event *common.ApplicationEvent) {
 	s.events = make(chan *common.SendEvent)
+	s.eventsClosed = false
 	s.reports = make(RowWriters)
 	s.mutex = new(sync.Mutex)
 }

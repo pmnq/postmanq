@@ -4,17 +4,20 @@ import (
 	"runtime/debug"
 
 	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 
 	"github.com/Halfi/postmanq/common"
 )
 
-var logger zerolog.Logger
+var loggers map[string]zerolog.Logger
 
 // Message запись логирования
 type Message struct {
 	Hostname string
 
 	Stack []byte
+
+	logger *zerolog.Logger
 }
 
 func All() *Message {
@@ -22,21 +25,38 @@ func All() *Message {
 }
 
 func By(hostname string) *Message {
+	l, ok := loggers[hostname]
+	if !ok {
+		l = log.Logger
+	}
+
 	return &Message{
 		Hostname: hostname,
+		logger:   &l,
 	}
 }
 
 // Err пишет ошибку в лог
 func (m *Message) Err(message string, args ...interface{}) {
 	go func() {
-		logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack())).Msgf(message, args...)
+		m.logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack())).Msgf(message, args...)
 	}()
 }
 
 func (m *Message) ErrErr(err error) {
 	go func() {
-		logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack())).Interface("error", err).Err(err).Send()
+		m.logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack())).Interface("error", err).Err(err).Send()
+	}()
+}
+
+// ErrWithErr пишет ошибку с сообщением
+func (m *Message) ErrWithErr(err error, message string, args ...interface{}) {
+	go func() {
+		l := m.logger.Error().Str("hostname", m.Hostname)
+		if err != nil {
+			l = l.Interface("error", err).Err(err)
+		}
+		l.Msgf(message, args...)
 	}()
 }
 
@@ -49,7 +69,7 @@ func (m *Message) FailExit(message string, args ...interface{}) {
 // FailExitWithErr пишет ошибку с сообщением в лог и завершает программу
 func (m *Message) FailExitWithErr(err error, message string, args ...interface{}) {
 	go func() {
-		l := logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack()))
+		l := m.logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack()))
 		if err != nil {
 			l = l.Interface("error", err)
 		}
@@ -62,7 +82,7 @@ func (m *Message) FailExitWithErr(err error, message string, args ...interface{}
 // FailExitErr пишет системную ошибку в лог и завершает программу
 func (m *Message) FailExitErr(err error) {
 	go func() {
-		l := logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack()))
+		l := m.logger.Error().Str("hostname", m.Hostname).Str("stack", string(debug.Stack()))
 		if err != nil {
 			l = l.Interface("error", err)
 		}
@@ -76,14 +96,14 @@ func (m *Message) FailExitErr(err error) {
 // Warn пишет произвольное предупреждение
 func (m *Message) Warn(message string, args ...interface{}) {
 	go func() {
-		logger.Warn().Str("hostname", m.Hostname).Msgf(message, args...)
+		m.logger.Warn().Str("hostname", m.Hostname).Msgf(message, args...)
 	}()
 }
 
 // WarnErr пишет системное предупреждение
 func (m *Message) WarnErr(err error) {
 	go func() {
-		l := logger.Warn().Str("hostname", m.Hostname)
+		l := m.logger.Warn().Str("hostname", m.Hostname)
 		if err != nil {
 			l = l.Interface("error", err)
 		}
@@ -94,7 +114,7 @@ func (m *Message) WarnErr(err error) {
 // WarnWithErr пишет ошибку с сообщением
 func (m *Message) WarnWithErr(err error, message string, args ...interface{}) {
 	go func() {
-		l := logger.Warn().Str("hostname", m.Hostname)
+		l := m.logger.Warn().Str("hostname", m.Hostname)
 		if err != nil {
 			l = l.Interface("error", err).Err(err)
 		}
@@ -104,12 +124,12 @@ func (m *Message) WarnWithErr(err error, message string, args ...interface{}) {
 
 // Info пишет информационное сообщение
 func (m *Message) Info(message string, args ...interface{}) {
-	go func() { logger.Info().Str("hostname", m.Hostname).Msgf(message, args...) }()
+	go func() { m.logger.Info().Str("hostname", m.Hostname).Msgf(message, args...) }()
 }
 
 // Debug пишет сообщение для отладки
 func (m *Message) Debug(message string, args ...interface{}) {
 	go func() {
-		logger.Debug().Str("hostname", m.Hostname).Msgf(message, args...)
+		m.logger.Debug().Str("hostname", m.Hostname).Msgf(message, args...)
 	}()
 }

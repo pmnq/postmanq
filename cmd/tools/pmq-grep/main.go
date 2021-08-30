@@ -3,22 +3,34 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Halfi/postmanq/application"
 	"github.com/Halfi/postmanq/common"
 )
 
 func main() {
-	var file, envelope, recipient string
+	var file, envelope, recipient, configURL string
 	var numberLines int
 	flag.StringVar(&file, "f", common.ExampleConfigYaml, "configuration yaml file")
+	flag.StringVar(&configURL, "u", common.InvalidInputString, "remote configurations file url")
 	flag.StringVar(&envelope, "e", common.InvalidInputString, "necessary envelope")
 	flag.StringVar(&recipient, "r", common.InvalidInputString, "necessary recipient")
 	flag.Parse()
 
 	app := application.NewGrep()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sig
+		app.SendEvents(common.NewApplicationEvent(common.FinishApplicationEventKind))
+	}()
+
 	if app.IsValidConfigFilename(file) && recipient != common.InvalidInputString {
-		app.SetConfigFilename(file)
+		app.SetConfigMeta(file, configURL, "")
 		app.RunWithArgs(envelope, recipient, numberLines)
 	} else {
 		fmt.Println("Usage: pmq-grep -f -r [-e]")

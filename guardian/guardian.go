@@ -9,17 +9,18 @@ import (
 type Guardian struct {
 	// идентификатор для логов
 	id int
+	s  *Service
 }
 
 // создает нового защитника
-func newGuardian(id int) {
-	guardian := &Guardian{id}
+func newGuardian(id int, s *Service) {
+	guardian := &Guardian{id: id, s: s}
 	guardian.run()
 }
 
 // запускает прослушивание событий отправки писем
 func (g *Guardian) run() {
-	for event := range events {
+	for event := range g.s.events {
 		g.guard(event)
 	}
 }
@@ -28,7 +29,7 @@ func (g *Guardian) run() {
 func (g *Guardian) guard(event *common.SendEvent) {
 	logger.By(event.Message.HostnameFrom).Info("guardian#%d-%d check mail", g.id, event.Message.Id)
 
-	excludes := service.getExcludes(event.Message.HostnameFrom)
+	excludes := g.s.getExcludes(event.Message.HostnameFrom)
 	isExclude := false
 	for _, exclude := range excludes {
 		if exclude == event.Message.HostnameTo {

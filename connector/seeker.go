@@ -3,32 +3,27 @@ package connector
 import (
 	"net"
 	"strings"
-	"sync"
 
 	"github.com/Halfi/postmanq/logger"
-)
-
-var (
-	seekerEvents = make(chan *ConnectionEvent)
-	// семафор, необходим для поиска MX серверов
-	seekerMutex = new(sync.Mutex)
 )
 
 // искатель, ищет информацию о сервере
 type Seeker struct {
 	// Идентификатор для логов
 	id int
+
+	seekerEvents chan *ConnectionEvent
+	mailServers  *MailServers
 }
 
 // создает и запускает нового искателя
-func newSeeker(id int) {
-	seeker := &Seeker{id}
-	seeker.run()
+func newSeeker(id int, seekerEvents chan *ConnectionEvent, mailServers *MailServers) *Seeker {
+	return &Seeker{id: id, seekerEvents: seekerEvents, mailServers: mailServers}
 }
 
 // запускает прослушивание событий поиска информации о сервере
 func (s *Seeker) run() {
-	for event := range seekerEvents {
+	for event := range s.seekerEvents {
 		s.seek(event)
 	}
 }
@@ -37,22 +32,21 @@ func (s *Seeker) run() {
 func (s *Seeker) seek(event *ConnectionEvent) {
 	hostnameTo := event.Message.HostnameTo
 	// добавляем новый почтовый домен
-	seekerMutex.Lock()
-	if _, ok := mailServers[hostnameTo]; !ok {
+	mailServer, ok := s.mailServers.Get(hostnameTo)
+	if !ok {
 		logger.By(event.Message.HostnameFrom).Debug("seeker#%d-%d create mail server for %s", event.connectorId, event.Message.Id, hostnameTo)
-		mailServers[hostnameTo] = &MailServer{
+		mailServer = &MailServer{
 			status:      LookupMailServerStatus,
 			connectorId: event.connectorId,
 		}
+		s.mailServers.Set(hostnameTo, mailServer)
 	}
-	seekerMutex.Unlock()
-	mailServer := mailServers[hostnameTo]
+
 	// если пришло несколько несколько писем на один почтовый сервис,
 	// и информация о сервисе еще не собрана,
 	// то таким образом блокируем повторную попытку собрать инфомацию о почтовом сервисе
 	if event.connectorId == mailServer.connectorId && mailServer.status == LookupMailServerStatus {
 		logger.By(event.Message.HostnameFrom).Debug("seeker#%d-%d look up mx domains for %s...", s.id, event.Message.Id, hostnameTo)
-		mailServer := mailServers[hostnameTo]
 		// ищем почтовые сервера для домена
 		mxes, err := net.LookupMX(hostnameTo)
 		if err == nil {

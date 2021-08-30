@@ -22,10 +22,11 @@ func (r *Report) Run() {
 	common.Services = []interface{}{
 		analyser.Inst(),
 	}
-	r.services = []interface{}{
+
+	r.services = append([]interface{}{
 		consumer.Inst(),
-		analyser.Inst(),
-	}
+	}, common.Services...)
+
 	r.run(r, common.NewApplicationEvent(common.InitApplicationEventKind))
 }
 

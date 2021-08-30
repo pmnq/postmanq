@@ -11,7 +11,7 @@ import (
 
 type Assistant struct {
 	id           int
-	connect      *amqp.Connection
+	connector    *amqpConnector
 	srcBinding   *AssistantBinding
 	destBindings map[string]*Binding
 }
@@ -23,7 +23,7 @@ func (a *Assistant) run() {
 }
 
 func (a *Assistant) consume(id int) {
-	channel, err := a.connect.Channel()
+	channel, err := a.connector.GetConnect().Channel()
 	if err != nil {
 		logger.All().Warn("consumer#%d, handler#%d can't get channel %s", a.id, id, a.srcBinding.Binding.Queue)
 		return
