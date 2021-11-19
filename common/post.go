@@ -3,8 +3,6 @@ package common
 import (
 	"errors"
 	"regexp"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -17,7 +15,7 @@ const (
 
 var (
 	// Регулярка для проверки адреса почты, сразу компилируем, чтобы при отправке не терять на этом время
-	EmailRegexp   = regexp.MustCompile(`^[\w\d\.\_\%\+\-]+@([\w\d\.\-]+\.\w{2,5})$`)
+	EmailRegexp   = regexp.MustCompile("^(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21\\x23-\\x5b\\x5d-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])*\")@((?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x21-\\x5a\\x53-\\x7f]|\\\\[\\x01-\\x09\\x0b\\x0c\\x0e-\\x7f])+)\\]))$")
 	EmptyStrSlice = []string{}
 )
 
@@ -135,43 +133,5 @@ func (this *MailMessage) getHostnameFromEmail(email string) (string, error) {
 		return matches[0][1], nil
 	} else {
 		return "", errors.New("invalid email address")
-	}
-}
-
-// возвращает письмо обратно в очередь после ошибки во время отправки
-func ReturnMail(event *SendEvent, err error) {
-	// необходимо проверить сообщение на наличие кода ошибки
-	// обычно код идет первым
-	if err != nil {
-		errorMessage := err.Error()
-		parts := strings.Split(errorMessage, " ")
-		if len(parts) > 0 {
-			// пытаемся получить код
-			code, e := strconv.Atoi(strings.TrimSpace(parts[0]))
-			// и создать ошибку
-			// письмо с ошибкой вернется в другую очередь, отличную от письмо без ошибки
-			if e == nil {
-				event.Message.Error = &MailError{errorMessage, code}
-			}
-		}
-	}
-
-	// если в событии уже создан клиент
-	if event.Client != nil {
-		if event.Client.Worker != nil {
-			// сбрасываем цепочку команд к почтовому сервису
-			event.Client.Worker.Reset()
-		}
-	}
-
-	// отпускаем поток получателя сообщений из очереди
-	if event.Message.Error == nil {
-		event.Result <- DelaySendEventResult
-	} else {
-		if event.Message.Error.Code == 421 {
-			event.Result <- DelaySendEventResult
-		} else {
-			event.Result <- ErrorSendEventResult
-		}
 	}
 }

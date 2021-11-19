@@ -3,7 +3,7 @@ package limiter
 import (
 	"github.com/Halfi/postmanq/common"
 	"github.com/Halfi/postmanq/logger"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 	"time"
 )
 
@@ -54,6 +54,10 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 func (s *Service) init(conf *Config, hostname string) {
 	// инициализируем ограничения
 	for host, limit := range conf.Limits {
+		if limit.duration == 0 {
+			delete(conf.Limits, host)
+			logger.By(hostname).Warn("wrong limits settings")
+		}
 		limit.init()
 		logger.By(hostname).Debug("create limit for %s with type %v and duration %v", host, limit.bindingType, limit.duration)
 	}

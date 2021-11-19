@@ -6,7 +6,7 @@ import (
 	"encoding/pem"
 	"github.com/Halfi/postmanq/common"
 	"github.com/Halfi/postmanq/logger"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 	"io/ioutil"
 	"net"
 	"strings"
@@ -59,6 +59,9 @@ func (s *Service) OnInit(event *common.ApplicationEvent) {
 	err := yaml.Unmarshal(event.Data, s)
 	if err == nil {
 		for name, config := range s.Configs {
+			if config.MXHostname != "" {
+				name = config.MXHostname
+			}
 			s.init(config, name)
 		}
 		if s.ConnectorsCount == 0 {
@@ -205,6 +208,9 @@ type Config struct {
 
 	// ip с которых будем рассылать письма
 	Addresses []string `yaml:"ips"`
+
+	// hostname, на котором будет слушаться 25 порт
+	MXHostname string `yaml:"mxHostname"`
 
 	// количество ip
 	addressesLen int

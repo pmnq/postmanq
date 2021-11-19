@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/Halfi/postmanq/common"
 	"github.com/Halfi/postmanq/logger"
+	"github.com/Halfi/postmanq/mailer"
 	"net"
 	"net/smtp"
 	"time"
@@ -87,7 +88,7 @@ receiveConnect:
 
 waitConnect:
 	if event.TryCount >= common.MaxTryConnectionCount {
-		common.ReturnMail(
+		mailer.ReturnMail(
 			event.SendEvent,
 			errors.New(fmt.Sprintf("connector#%d can't connect to %s", c.id, event.Message.HostnameTo)),
 		)
@@ -101,7 +102,7 @@ waitConnect:
 
 // создает соединение к почтовому сервису
 func (c *Connector) createSmtpClient(mxServer *MxServer, event *ConnectionEvent, ptrSmtpClient **common.SmtpClient) {
-	// устанавливаем ip, с которого бцдем отсылать письмо
+	// устанавливаем ip, с которого будем отсылать письмо
 	tcpAddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(event.address, "0"))
 	if err == nil {
 		logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d resolve tcp address %s", c.id, event.Message.Id, tcpAddr.String())
