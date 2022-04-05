@@ -42,27 +42,25 @@ func (p *Preparer) prepare(event *common.SendEvent) {
 		connectorId: p.id,
 		address:     service.getAddress(event.Message.HostnameFrom, p.id),
 	}
-	goto connectToMailServer
 
-connectToMailServer:
-	// отправляем событие сбора информации о сервере
-	p.seekerEvents <- connectionEvent
-	server := <-connectionEvent.servers
-	switch server.status {
-	case LookupMailServerStatus:
-		goto waitLookup
-	case SuccessMailServerStatus:
-		connectionEvent.server = server
-		p.connectorEvents <- connectionEvent
-	case ErrorMailServerStatus:
-		mailer.ReturnMail(
-			event,
-			errors.New(fmt.Sprintf("511 preparer#%d-%d can't lookup %s", p.id, event.Message.Id, event.Message.HostnameTo)),
-		)
+	for {
+		// отправляем событие сбора информации о сервере
+		p.seekerEvents <- connectionEvent
+		server := <-connectionEvent.servers
+		switch server.status {
+		case LookupMailServerStatus:
+			logger.By(event.Message.HostnameFrom).Debug("preparer#%d-%d wait ending look up mail server %s...", p.id, event.Message.Id, event.Message.HostnameTo)
+			time.Sleep(common.App.Timeout().Sleep)
+			continue
+		case SuccessMailServerStatus:
+			connectionEvent.server = server
+			p.connectorEvents <- connectionEvent
+		case ErrorMailServerStatus:
+			mailer.ReturnMail(
+				event,
+				errors.New(fmt.Sprintf("511 preparer#%d-%d can't lookup %s", p.id, event.Message.Id, event.Message.HostnameTo)),
+			)
+		}
+		break
 	}
-
-waitLookup:
-	logger.By(event.Message.HostnameFrom).Debug("preparer#%d-%d wait ending look up mail server %s...", p.id, event.Message.Id, event.Message.HostnameTo)
-	time.Sleep(common.App.Timeout().Sleep)
-	goto connectToMailServer
 }

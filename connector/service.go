@@ -265,7 +265,7 @@ func (s Service) getAddress(hostname string, id int) string {
 	if conf, ok := s.Configs[hostname]; ok && conf.addressesLen > 0 {
 		return conf.Addresses[id%conf.addressesLen]
 	} else {
-		logger.By(hostname).Err("connection service can't find ip by %s", hostname)
+		logger.By(hostname).Warn("connection service can't find ip by %s", hostname)
 		return common.EmptyStr
 	}
 }

@@ -35,70 +35,76 @@ func (c *Connector) run() {
 // устанавливает соединение к почтовому сервису
 func (c *Connector) connect(event *ConnectionEvent) {
 	logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d try find connection", c.id, event.Message.Id)
-	goto receiveConnect
 
-receiveConnect:
-	event.TryCount++
-	var targetClient *common.SmtpClient
+	for {
+		event.TryCount++
+		var targetClient *common.SmtpClient
 
-	// смотрим все mx сервера почтового сервиса
-	for _, mxServer := range event.server.mxServers {
-		logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d try receive connection for %s", c.id, event.Message.Id, mxServer.hostname)
+		// смотрим все mx сервера почтового сервиса
+		for _, mxServer := range event.server.mxServers {
+			logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d try receive connection for %s", c.id, event.Message.Id, mxServer.hostname)
 
-		// пробуем получить клиента
-		var ok bool
-		event.Queue, ok = mxServer.queues[event.address]
-		if !ok {
-			event.Queue = common.NewLimitQueue()
+			// пробуем получить клиента
+			var ok bool
+			event.Queue, ok = mxServer.queues[event.address]
+			if !ok {
+				event.Queue = common.NewLimitQueue()
+			}
+
+			client := event.Queue.Pop()
+			if client != nil {
+				targetClient = client.(*common.SmtpClient)
+				logger.By(event.Message.HostnameFrom).Debug("connector%d-%d found free smtp client#%d", c.id, event.Message.Id, targetClient.Id)
+			}
+
+			// создаем новое соединение к почтовому сервису
+			// если не удалось найти клиента
+			// или клиент разорвал соединение
+			if (targetClient == nil && !event.Queue.HasLimit()) ||
+				(targetClient != nil && targetClient.Status == common.DisconnectedSmtpClientStatus) {
+				logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d can't find free smtp client for %s", c.id, event.Message.Id, mxServer.hostname)
+				c.createSmtpClient(mxServer, event, &targetClient)
+				if targetClient == nil {
+					logger.By(event.Message.HostnameFrom).Warn("connector#%d-%d client created byt not assigned", c.id, event.Message.Id)
+					continue
+				}
+			}
+
+			if targetClient == nil {
+				logger.By(event.Message.HostnameFrom).Warn("connector#%d-%d client is not created", c.id, event.Message.Id)
+				continue
+			}
 		}
 
-		client := event.Queue.Pop()
-		if client != nil {
-			targetClient = client.(*common.SmtpClient)
-			logger.By(event.Message.HostnameFrom).Debug("connector%d-%d found free smtp client#%d", c.id, event.Message.Id, targetClient.Id)
+		// если клиент не создан, значит мы создали максимум соединений к почтовому сервису
+		if targetClient == nil {
+			// приостановим работу горутины
+			logger.By(event.Message.HostnameFrom).Warn("connector#%d-%d no free smtp client", c.id, event.Message.Id)
+
+			if event.TryCount >= common.MaxTryConnectionCount {
+				mailer.ReturnMail(
+					event.SendEvent,
+					errors.New(fmt.Sprintf("connector#%d can't connect to %s", c.id, event.Message.HostnameTo)),
+				)
+				break
+			}
+
+			logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d can't find free connections, wait...", c.id, event.Message.Id)
+			time.Sleep(common.App.Timeout().Sleep)
+			continue
+		} else {
+			logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d next event", c.id, event.Message.Id)
+			targetClient.Wakeup()
+			event.Client = targetClient
+			// передаем событие отправителю
+			next := event.Iterator.Next()
+			if next != nil {
+				next.(common.SendingService).Event(event.SendEvent)
+			}
 		}
 
-		// создаем новое соединение к почтовому сервису
-		// если не удалось найти клиента
-		// или клиент разорвал соединение
-		if (targetClient == nil && !event.Queue.HasLimit()) ||
-			(targetClient != nil && targetClient.Status == common.DisconnectedSmtpClientStatus) {
-			logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d can't find free smtp client for %s", c.id, event.Message.Id, mxServer.hostname)
-			c.createSmtpClient(mxServer, event, &targetClient)
-		}
-
-		if targetClient != nil {
-			break
-		}
+		return
 	}
-
-	// если клиент не создан, значит мы создали максимум соединений к почтовому сервису
-	if targetClient == nil {
-		// приостановим работу горутины
-		goto waitConnect
-	} else {
-		targetClient.Wakeup()
-		event.Client = targetClient
-		// передаем событие отправителю
-		next := event.Iterator.Next()
-		if next != nil {
-			next.(common.SendingService).Event(event.SendEvent)
-		}
-	}
-	return
-
-waitConnect:
-	if event.TryCount >= common.MaxTryConnectionCount {
-		mailer.ReturnMail(
-			event.SendEvent,
-			errors.New(fmt.Sprintf("connector#%d can't connect to %s", c.id, event.Message.HostnameTo)),
-		)
-	} else {
-		logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d can't find free connections, wait...", c.id, event.Message.Id)
-		time.Sleep(common.App.Timeout().Sleep)
-		goto receiveConnect
-	}
-	return
 }
 
 // создает соединение к почтовому сервису
@@ -138,6 +144,7 @@ func (c *Connector) createSmtpClient(mxServer *MxServer, event *ConnectionEvent,
 		logger.By(event.Message.HostnameFrom).WarnWithErr(err, "can't set connection deadline to %s", time.Now().Add(common.App.Timeout().Hello))
 	}
 
+	logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d create client to %s", c.id, event.Message.Id, mxServer.hostname)
 	client, err := smtp.NewClient(connection, mxServer.hostname)
 	if err != nil {
 		// если не удалось создать клиента,
@@ -152,7 +159,7 @@ func (c *Connector) createSmtpClient(mxServer *MxServer, event *ConnectionEvent,
 		return
 	}
 
-	logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d create client to %s", c.id, event.Message.Id, mxServer.hostname)
+	logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d send command HELLO: %s", c.id, event.Message.Id, event.Message.HostnameFrom)
 	err = client.Hello(service.getHostname(event.Message.HostnameFrom))
 	if err != nil {
 		if err := client.Quit(); err != nil {
@@ -163,7 +170,6 @@ func (c *Connector) createSmtpClient(mxServer *MxServer, event *ConnectionEvent,
 		return
 	}
 
-	logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d send command HELLO: %s", c.id, event.Message.Id, event.Message.HostnameFrom)
 	// проверяем доступно ли TLS
 	if mxServer.useTLS {
 		mxServer.useTLS, _ = client.Extension("STARTTLS")
@@ -224,8 +230,22 @@ func (c *Connector) initSmtpClient(mxServer *MxServer, event *ConnectionEvent, p
 	smtpClient.Worker = client
 	smtpClient.ModifyDate = time.Now()
 	if isNil {
-		logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d create smtp client#%d for %s", c.id, event.Message.Id, smtpClient.Id, mxServer.hostname)
+		logger.By(event.Message.HostnameFrom).Debug(
+			"connector#%d-%d create smtp client#%d for %s status: %d",
+			c.id,
+			event.Message.Id,
+			smtpClient.Id,
+			mxServer.hostname,
+			smtpClient.Status,
+		)
 	} else {
-		logger.By(event.Message.HostnameFrom).Debug("connector#%d-%d reopen smtp client#%d for %s", c.id, event.Message.Id, smtpClient.Id, mxServer.hostname)
+		logger.By(event.Message.HostnameFrom).Debug(
+			"connector#%d-%d reopen smtp client#%d for %s status: %d",
+			c.id,
+			event.Message.Id,
+			smtpClient.Id,
+			mxServer.hostname,
+			smtpClient.Status,
+		)
 	}
 }

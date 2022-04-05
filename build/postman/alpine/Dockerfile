@@ -1,4 +1,4 @@
-FROM golang:1.17-alpine as builder
+FROM golang:1.17-alpine3.15 as builder
 
 RUN addgroup -g 1001 postmanq && \
     adduser -S -u 1001 -G postmanq postmanq && \
@@ -12,7 +12,7 @@ RUN chown -R 1001:1001 /app && \
     chown 1001:1001 /etc/postman.yaml && \
     chmod +x /app/*
 
-FROM alpine:3.14
+FROM alpine:3.15
 WORKDIR /
 
 COPY --from=builder /etc/passwd /etc/passwd

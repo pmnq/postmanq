@@ -144,6 +144,7 @@ func ReturnMail(event *common.SendEvent, err error) {
 	// обычно код идет первым
 	if err != nil {
 		errorMessage := err.Error()
+		logger.All().Debug("return mail error: %s", errorMessage)
 		parts := strings.Split(errorMessage, " ")
 		if len(parts) > 0 {
 			// пытаемся получить код
