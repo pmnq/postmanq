@@ -1,4 +1,4 @@
-FROM golang:1.16-alpine3.14 AS builder
+FROM golang:1.17-alpine3.15 AS builder
 
 RUN apk add --update --no-cache make bash git openssh-client build-base musl-dev curl wget
 
@@ -16,7 +16,7 @@ RUN addgroup -g 1001 postmanq && \
     adduser -S -u 1001 -G postmanq postmanq && \
     chown -R 1001:1001 /src/app
 
-FROM alpine:3.14
+FROM alpine:3.15
 
 COPY --from=builder /etc/passwd /etc/passwd
 COPY --from=builder /etc/group /etc/group
