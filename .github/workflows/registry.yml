@@ -29,7 +29,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Cache go
-        uses: actions/cache@v2.1.6
+        uses: actions/cache@v3.0.7
         with:
           path: |
             ~/.cache/go-build
@@ -40,7 +40,7 @@ jobs:
 
       - name: Cache app build
         id: app_cache
-        uses: actions/cache@v2.1.6
+        uses: actions/cache@v3.0.7
         with:
           path: ./bin/
           key: ${{ runner.os }}-webapp-${{ hashFiles('bin') }}
@@ -108,7 +108,7 @@ jobs:
             suffix=${{ matrix.tagSuffix }},onlatest=true
 
       - name: Cache Docker layers
-        uses: actions/cache@v2.1.6
+        uses: actions/cache@v3.0.7
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.sha }}
